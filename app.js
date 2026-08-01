@@ -42,13 +42,14 @@ import {
   let activeWorkout = load(LS_ACTIVE, null); // { routineId, routineName, startedAt, exercises: [{name, sets: [{weight, reps}]}] }
   let cardioLog = load(LS_CARDIO, []); // [{ id, date, machine, incline, speed, durationMinutes }]
   let preferredName = load(LS_PROFILE, {}).preferredName || null;
+  let bodyStats = load(LS_PROFILE, {}).bodyStats || null; // { weightLb, heightFt, heightIn, age, sex, activityLevel }
 
   function persistLocal() {
     save(LS_ROUTINES, routines);
     save(LS_HISTORY, history);
     save(LS_ACTIVE, activeWorkout);
     save(LS_CARDIO, cardioLog);
-    save(LS_PROFILE, { preferredName });
+    save(LS_PROFILE, { preferredName, bodyStats });
   }
 
   const saveRoutines = () => { persistLocal(); schedulePush(); };
@@ -121,6 +122,7 @@ import {
       activeWorkout,
       cardioLog,
       preferredName,
+      bodyStats,
       version: remoteVersion,
       updatedAt: Date.now(),
     }).catch(err => console.error('Cloud sync failed', err));
@@ -144,12 +146,14 @@ import {
     activeWorkout = data.activeWorkout || null;
     cardioLog = data.cardioLog || [];
     if (data.preferredName) preferredName = data.preferredName;
+    if (data.bodyStats) bodyStats = data.bodyStats;
     persistLocal();
     renderRoutineSelect();
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
     renderHome();
+    renderWeightTab();
   }
 
   function showImportModal() { importModal.classList.remove('hidden'); }
@@ -820,6 +824,173 @@ import {
   });
 
   /* ---------------------------------------------------------------------
+     WEIGHT TAB — BMI + estimated daily nutrition targets.
+     General-purpose estimates (Mifflin-St Jeor for BMR, standard adult BMI
+     bands) — not medical advice, and the copy is written to stay gentle
+     regardless of where someone's numbers land.
+  --------------------------------------------------------------------- */
+  const weightInput = document.getElementById('weight-input');
+  const heightFtInput = document.getElementById('height-ft-input');
+  const heightInInput = document.getElementById('height-in-input');
+  const ageInput = document.getElementById('age-input');
+  const sexToggleEl = document.getElementById('sex-toggle');
+  const activitySelect = document.getElementById('activity-select');
+  const weightCalcBtn = document.getElementById('weight-calc-btn');
+  const weightResultsEl = document.getElementById('weight-results');
+  const weightBmiValueEl = document.getElementById('weight-bmi-value');
+  const weightBmiTagEl = document.getElementById('weight-bmi-tag');
+  const weightBmiNoteEl = document.getElementById('weight-bmi-note');
+  const weightCaloriesValueEl = document.getElementById('weight-calories-value');
+  const weightProteinValueEl = document.getElementById('weight-protein-value');
+  const weightCarbsValueEl = document.getElementById('weight-carbs-value');
+  const weightFatValueEl = document.getElementById('weight-fat-value');
+
+  const ACTIVITY_MULTIPLIERS = {
+    sedentary: 1.2,
+    light: 1.375,
+    moderate: 1.55,
+    active: 1.725,
+    veryActive: 1.9,
+  };
+
+  const BMI_BANDS = [
+    {
+      max: 18.5,
+      label: 'Underweight',
+      tone: 'cardio-tag',
+      note: "You're a bit below the typical healthy range — a modest calorie surplus below will help you fuel training and build up steadily.",
+    },
+    {
+      max: 25,
+      label: 'Healthy weight',
+      tone: '',
+      note: "You're right in the typical healthy range — these targets are tuned to help you build muscle while staying there.",
+    },
+    {
+      max: 30,
+      label: 'Above healthy range',
+      tone: 'cardio-tag',
+      note: "You're a bit above the typical healthy range. Small, steady changes go a long way — the targets below favor a gentle deficit while keeping your strength.",
+    },
+    {
+      max: Infinity,
+      label: 'Well above healthy range',
+      tone: 'cardio-tag',
+      note: 'These targets aim for gradual, sustainable progress while preserving your strength — consistency matters far more than speed here.',
+    },
+  ];
+
+  function bmiCategory(bmi) {
+    return BMI_BANDS.find(band => bmi < band.max) || BMI_BANDS[BMI_BANDS.length - 1];
+  }
+
+  function calcNutrition(stats) {
+    const totalInches = stats.heightFt * 12 + stats.heightIn;
+    const heightCm = totalInches * 2.54;
+    const heightM = heightCm / 100;
+    const weightKg = stats.weightLb * 0.453592;
+
+    const bmi = weightKg / (heightM * heightM);
+    const category = bmiCategory(bmi);
+
+    const bmrBase = 10 * weightKg + 6.25 * heightCm - 5 * stats.age;
+    const bmr = stats.sex === 'male' ? bmrBase + 5 : bmrBase - 161;
+    const tdee = bmr * (ACTIVITY_MULTIPLIERS[stats.activityLevel] || 1.55);
+
+    let calorieTarget;
+    if (bmi >= 30) calorieTarget = tdee - 500;
+    else if (bmi >= 25) calorieTarget = tdee - 350;
+    else if (bmi < 18.5) calorieTarget = tdee + 350;
+    else calorieTarget = tdee + 200; // healthy weight: lean surplus for muscle gain
+
+    const proteinG = stats.weightLb * 0.9; // ~0.8-1g per lb bodyweight, standard muscle-gain range
+    const proteinCals = proteinG * 4;
+    const fatCals = calorieTarget * 0.27;
+    const fatG = fatCals / 9;
+    const carbCals = Math.max(0, calorieTarget - proteinCals - fatCals);
+    const carbG = carbCals / 4;
+
+    return {
+      bmi,
+      category,
+      calorieTarget: Math.round(calorieTarget),
+      proteinG: Math.round(proteinG),
+      fatG: Math.round(fatG),
+      carbG: Math.round(carbG),
+    };
+  }
+
+  sexToggleEl.addEventListener('click', e => {
+    const chip = e.target.closest('.sex-chip');
+    if (!chip) return;
+    sexToggleEl.querySelectorAll('.sex-chip').forEach(c => c.classList.toggle('active', c === chip));
+  });
+
+  function populateWeightForm(stats) {
+    weightInput.value = stats.weightLb ?? '';
+    heightFtInput.value = stats.heightFt ?? '';
+    heightInInput.value = stats.heightIn ?? '';
+    ageInput.value = stats.age ?? '';
+    activitySelect.value = stats.activityLevel || 'moderate';
+    sexToggleEl.querySelectorAll('.sex-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.sex === (stats.sex || 'male'));
+    });
+  }
+
+  function renderWeightResults(stats) {
+    const result = calcNutrition(stats);
+    weightResultsEl.classList.remove('hidden');
+    weightBmiValueEl.textContent = result.bmi.toFixed(1);
+    weightBmiTagEl.textContent = result.category.label;
+    weightBmiTagEl.className = 'routine-tag' + (result.category.tone ? ' ' + result.category.tone : '');
+    weightBmiNoteEl.textContent = result.category.note;
+    weightCaloriesValueEl.textContent = result.calorieTarget;
+    weightProteinValueEl.textContent = result.proteinG;
+    weightCarbsValueEl.textContent = result.carbG;
+    weightFatValueEl.textContent = result.fatG;
+  }
+
+  function renderWeightTab() {
+    if (!bodyStats) {
+      weightResultsEl.classList.add('hidden');
+      return;
+    }
+    populateWeightForm(bodyStats);
+    renderWeightResults(bodyStats);
+  }
+
+  weightCalcBtn.addEventListener('click', () => {
+    const weightLb = parseFloat(weightInput.value);
+    const heightFt = parseFloat(heightFtInput.value) || 0;
+    const heightIn = parseFloat(heightInInput.value) || 0;
+    const age = parseInt(ageInput.value, 10);
+    const sexChip = sexToggleEl.querySelector('.sex-chip.active');
+    const sex = sexChip ? sexChip.dataset.sex : 'male';
+    const activityLevel = activitySelect.value;
+
+    if (!weightLb || weightLb <= 0) {
+      alert('Enter your weight in pounds.');
+      weightInput.focus();
+      return;
+    }
+    if (heightFt <= 0 && heightIn <= 0) {
+      alert('Enter your height.');
+      heightFtInput.focus();
+      return;
+    }
+    if (!age || age <= 0) {
+      alert('Enter your age.');
+      ageInput.focus();
+      return;
+    }
+
+    bodyStats = { weightLb, heightFt, heightIn, age, sex, activityLevel };
+    persistLocal();
+    schedulePush();
+    renderWeightResults(bodyStats);
+  });
+
+  /* ---------------------------------------------------------------------
      HISTORY TAB — a unified, date-sorted feed of strength workouts + cardio
   --------------------------------------------------------------------- */
   const historyListEl = document.getElementById('history-list');
@@ -1296,6 +1467,8 @@ import {
   const restTimerEl = document.getElementById('rest-timer');
   const timerRingProgress = document.getElementById('timer-ring-progress');
   const timerPresetsEl = document.getElementById('timer-presets');
+  const timerMinus15Btn = document.getElementById('timer-minus15-btn');
+  const timerPlus15Btn = document.getElementById('timer-plus15-btn');
 
   const RING_RADIUS = 52;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -1380,8 +1553,15 @@ import {
     setTimeout(() => { clearInterval(flashInterval); stopAlerting(); }, 6000);
   }
 
+  function pulseDisplay() {
+    timerDisplay.classList.remove('tick');
+    void timerDisplay.offsetWidth; // force reflow so the animation restarts every tick
+    timerDisplay.classList.add('tick');
+  }
+
   function tick() {
     timerRemaining -= 1;
+    pulseDisplay();
     if (timerRemaining <= 0) {
       timerRemaining = 0;
       renderTimer();
@@ -1438,6 +1618,22 @@ import {
     }
   });
 
+  function nudgeTimer(delta) {
+    stopAlerting();
+    if (timerRunning) {
+      timerRemaining = Math.max(5, timerRemaining + delta);
+      if (timerRemaining > timerTotalSeconds) timerTotalSeconds = timerRemaining;
+    } else {
+      timerTotalSeconds = Math.max(5, timerTotalSeconds + delta);
+      timerRemaining = timerTotalSeconds;
+    }
+    timerSecondsInput.value = timerTotalSeconds;
+    renderTimer();
+  }
+
+  timerMinus15Btn.addEventListener('click', () => nudgeTimer(-15));
+  timerPlus15Btn.addEventListener('click', () => nudgeTimer(15));
+
   timerPresetsEl.addEventListener('click', e => {
     const chip = e.target.closest('.preset-chip');
     if (!chip) return;
@@ -1459,6 +1655,7 @@ import {
   renderHistoryList();
   renderActiveWorkout();
   renderHome();
+  renderWeightTab();
   renderTimer();
 })();
 

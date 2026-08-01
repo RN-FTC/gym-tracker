@@ -38,7 +38,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   min-height: 100%;
   background:
     radial-gradient(ellipse 900px 500px at 15% -10%, rgba(79, 140, 255, 0.16), transparent 60%),
@@ -192,7 +192,7 @@ h2 { font-size: 1.05rem; }
 }
 
 .loader-title {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
   font-weight: 700;
   font-size: 1.3rem;
   letter-spacing: -0.02em;
@@ -283,7 +283,7 @@ h2 { font-size: 1.05rem; }
 }
 
 .topbar h1 {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
   font-size: 1.15rem;
   margin-bottom: 0;
   letter-spacing: -0.02em;
@@ -597,6 +597,48 @@ select { appearance: none; cursor: pointer; }
 }
 
 /* ---------------------------------------------------------------------
+   Weight & nutrition
+--------------------------------------------------------------------- */
+.sex-toggle { margin-top: 6px; }
+.sex-chip { flex: 1; text-align: center; }
+
+.weight-calc-row { margin-top: 18px; }
+
+.weight-bmi-value {
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.1;
+  margin-top: 4px;
+}
+
+.weight-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.weight-stat-tile {
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.weight-disclaimer {
+  margin-top: 4px;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------
    Home
 --------------------------------------------------------------------- */
 .home-greeting-card { padding: 20px 18px; }
@@ -615,7 +657,7 @@ select { appearance: none; cursor: pointer; }
 }
 
 .home-stat-value {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
   font-size: 1.6rem;
   font-weight: 700;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
@@ -730,14 +772,14 @@ select { appearance: none; cursor: pointer; }
 
 .timer-ring-wrap {
   position: relative;
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
   flex-shrink: 0;
 }
 
 .timer-ring {
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
   transform: rotate(-90deg);
 }
 
@@ -782,11 +824,28 @@ select { appearance: none; cursor: pointer; }
 }
 
 .rest-timer-display {
-  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
   font-variant-numeric: tabular-nums;
-  font-size: 1.15rem;
+  font-size: 1.45rem;
   font-weight: 700;
   line-height: 1;
+  display: inline-block;
+}
+
+@keyframes digit-tick {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.rest-timer-display.tick {
+  animation: digit-tick 0.35s ease-out;
+}
+
+.timer-nudge-btn {
+  min-width: 44px;
+  padding: 8px 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .timer-ring-sub {
@@ -894,15 +953,17 @@ select { appearance: none; cursor: pointer; }
   .active-header { flex-direction: column; }
   .active-header .btn { width: 100%; }
   .rest-timer { justify-content: center; padding-top: 12px; gap: 14px; }
-  .timer-ring-wrap { width: 68px; height: 68px; }
-  .timer-ring { width: 68px; height: 68px; }
-  .rest-timer-display { font-size: 1rem; }
+  .timer-ring-wrap { width: 76px; height: 76px; }
+  .timer-ring { width: 76px; height: 76px; }
+  .rest-timer-display { font-size: 1.15rem; }
+  .timer-nudge-btn { min-width: 38px; padding: 8px 6px; }
   .timer-btn-row { justify-content: center; }
   .topbar h1 { font-size: 1.05rem; }
   main { padding-left: max(14px, var(--safe-left)); padding-right: max(14px, var(--safe-right)); }
   .tab-btn { padding: 8px 12px; font-size: 0.66rem; }
   .tab-icon { width: 17px; height: 17px; }
   .cardio-form-row { flex-direction: column; gap: 0; }
+  .weight-stats-row { grid-template-columns: repeat(2, 1fr); }
 }
 
 @supports (-webkit-touch-callout: none) {
