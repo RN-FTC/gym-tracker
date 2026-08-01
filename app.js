@@ -169,7 +169,7 @@ import {
     signInWithGoogle()
       .catch(err => {
         console.error('Sign-in failed', err);
-        signinErrorEl.textContent = 'Sign-in failed — please try again.';
+        signinErrorEl.textContent = 'Sign-in failed: ' + (err.code || err.message || 'unknown error');
         signinErrorEl.classList.remove('hidden');
       })
       .finally(() => { googleSigninBtn.disabled = false; });
