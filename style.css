@@ -112,6 +112,42 @@ h2 { font-size: 1.05rem; }
   text-align: center;
 }
 
+/* ---------------------------------------------------------------------
+   Welcome screen
+--------------------------------------------------------------------- */
+#welcome-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse 800px 600px at 50% 30%, #0f1c3a, #05070f 70%);
+  overflow: hidden;
+  padding: 24px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+#welcome-screen.show { opacity: 1; }
+#welcome-screen .loader-mark { animation: none; }
+
+#welcome-screen .loader-content {
+  transform: translateY(10px);
+  transition: transform 0.4s ease;
+  max-width: 320px;
+  text-align: center;
+}
+#welcome-screen.show .loader-content { transform: translateY(0); }
+
+#welcome-screen .loader-title {
+  font-size: 1.5rem;
+}
+
+.welcome-continue-btn {
+  margin-top: 8px;
+}
+
 .loading-glow {
   position: absolute;
   width: 480px;
@@ -256,7 +292,10 @@ h2 { font-size: 1.05rem; }
 .tabs {
   display: flex;
   gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 
 .tab-btn {
   background: none;
@@ -508,6 +547,36 @@ select { appearance: none; cursor: pointer; }
 }
 
 /* ---------------------------------------------------------------------
+   Cardio
+--------------------------------------------------------------------- */
+.cardio-form > .field-label:first-child { margin-top: 0; }
+
+.cardio-form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.cardio-field { flex: 1; }
+
+.cardio-form-actions {
+  margin-top: 18px;
+}
+
+.cardio-item {
+  border-top: 1px solid var(--border-soft);
+  padding: 14px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.cardio-item:first-child { border-top: none; padding-top: 0; }
+
+.cardio-item-name { font-weight: 600; margin-bottom: 2px; }
+.cardio-item-detail { font-size: 0.82rem; margin-bottom: 2px; }
+.cardio-item-date { font-size: 0.78rem; }
+
+/* ---------------------------------------------------------------------
    History
 --------------------------------------------------------------------- */
 .history-item {
@@ -750,6 +819,8 @@ select { appearance: none; cursor: pointer; }
   .timer-btn-row { justify-content: center; }
   .topbar h1 { font-size: 1.05rem; }
   main { padding-left: max(14px, var(--safe-left)); padding-right: max(14px, var(--safe-right)); }
+  .tab-btn { padding: 10px 11px; font-size: 0.85rem; white-space: nowrap; }
+  .cardio-form-row { flex-direction: column; gap: 0; }
 }
 
 @supports (-webkit-touch-callout: none) {

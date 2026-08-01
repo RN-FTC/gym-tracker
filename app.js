@@ -17,6 +17,8 @@ import {
   const LS_ROUTINES = 'gymtracker_routines';
   const LS_HISTORY = 'gymtracker_history';
   const LS_ACTIVE = 'gymtracker_active_workout';
+  const LS_CARDIO = 'gymtracker_cardio';
+  const LS_PROFILE = 'gymtracker_profile';
 
   const uid = () =>
     (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
@@ -38,16 +40,21 @@ import {
   let routines = load(LS_ROUTINES, []);
   let history = load(LS_HISTORY, []);
   let activeWorkout = load(LS_ACTIVE, null); // { routineId, routineName, startedAt, exercises: [{name, sets: [{weight, reps}]}] }
+  let cardioLog = load(LS_CARDIO, []); // [{ id, date, machine, incline, speed, durationMinutes }]
+  let preferredName = load(LS_PROFILE, {}).preferredName || null;
 
   function persistLocal() {
     save(LS_ROUTINES, routines);
     save(LS_HISTORY, history);
     save(LS_ACTIVE, activeWorkout);
+    save(LS_CARDIO, cardioLog);
+    save(LS_PROFILE, { preferredName });
   }
 
   const saveRoutines = () => { persistLocal(); schedulePush(); };
   const saveHistory = () => { persistLocal(); schedulePush(); };
   const saveActive = () => { persistLocal(); schedulePush(); };
+  const saveCardio = () => { persistLocal(); schedulePush(); };
   const clearActive = () => { activeWorkout = null; persistLocal(); schedulePush(); };
 
   /* ---------------------------------------------------------------------
@@ -63,6 +70,13 @@ import {
   const importSkipBtn = document.getElementById('import-skip-btn');
   const importConfirmBtn = document.getElementById('import-confirm-btn');
   const loadingScreen = document.getElementById('loading-screen');
+  const nameModal = document.getElementById('name-modal');
+  const nameInput = document.getElementById('name-input');
+  const nameConfirmBtn = document.getElementById('name-confirm-btn');
+  const welcomeScreen = document.getElementById('welcome-screen');
+  const welcomeGreetingEl = document.getElementById('welcome-greeting');
+  const welcomeStatEl = document.getElementById('welcome-stat');
+  const welcomeContinueBtn = document.getElementById('welcome-continue-btn');
 
   let currentUser = null;
   let unsubscribeUserDoc = null;
@@ -105,6 +119,8 @@ import {
       routines,
       history,
       activeWorkout,
+      cardioLog,
+      preferredName,
       version: remoteVersion,
       updatedAt: Date.now(),
     }).catch(err => console.error('Cloud sync failed', err));
@@ -126,32 +142,98 @@ import {
     routines = data.routines || [];
     history = data.history || [];
     activeWorkout = data.activeWorkout || null;
+    cardioLog = data.cardioLog || [];
+    if (data.preferredName) preferredName = data.preferredName;
     persistLocal();
     renderRoutineSelect();
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
+    renderCardioList();
   }
 
   function showImportModal() { importModal.classList.remove('hidden'); }
   function closeImportModal() { importModal.classList.add('hidden'); }
 
+  // Import/skip resolve whichever promise promptImport() is currently waiting on.
+  let importResolve = null;
+
+  function promptImport() {
+    return new Promise(resolve => {
+      importResolve = resolve;
+      showImportModal();
+    });
+  }
+
   importConfirmBtn.addEventListener('click', () => {
     closeImportModal();
     pushNow();
+    if (importResolve) { importResolve(); importResolve = null; }
   });
 
   importSkipBtn.addEventListener('click', () => {
     routines = [];
     history = [];
     activeWorkout = null;
+    cardioLog = [];
     persistLocal();
     renderRoutineSelect();
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
+    renderCardioList();
     closeImportModal();
+    if (importResolve) { importResolve(); importResolve = null; }
   });
+
+  // Prompts for a display name on first sign-in, prefilled from the Google account.
+  function promptForName(user) {
+    return new Promise(resolve => {
+      const guess = (user.displayName || '').split(' ')[0] || '';
+      nameInput.value = guess;
+      nameModal.classList.remove('hidden');
+      setTimeout(() => nameInput.focus(), 50);
+
+      const onSubmit = () => {
+        preferredName = nameInput.value.trim() || guess || 'there';
+        persistLocal();
+        nameModal.classList.add('hidden');
+        nameConfirmBtn.removeEventListener('click', onSubmit);
+        nameInput.removeEventListener('keydown', onKeydown);
+        resolve();
+      };
+      const onKeydown = e => { if (e.key === 'Enter') onSubmit(); };
+
+      nameConfirmBtn.addEventListener('click', onSubmit);
+      nameInput.addEventListener('keydown', onKeydown);
+    });
+  }
+
+  function showWelcomeScreen() {
+    const hour = new Date().getHours();
+    const timeGreeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    welcomeGreetingEl.textContent = `${timeGreeting}, ${preferredName || 'there'}`;
+
+    const totalSessions = history.length + cardioLog.length;
+    welcomeStatEl.textContent = totalSessions > 0
+      ? `${totalSessions} workout${totalSessions === 1 ? '' : 's'} logged so far — let's keep going.`
+      : `Let's log your first workout.`;
+
+    welcomeScreen.classList.remove('hidden');
+    requestAnimationFrame(() => requestAnimationFrame(() => welcomeScreen.classList.add('show')));
+
+    let dismissed = false;
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      welcomeScreen.classList.remove('show');
+      setTimeout(() => welcomeScreen.classList.add('hidden'), 400);
+      welcomeContinueBtn.removeEventListener('click', dismiss);
+      clearTimeout(autoTimer);
+    };
+    const autoTimer = setTimeout(dismiss, 3200);
+    welcomeContinueBtn.addEventListener('click', dismiss);
+  }
 
   function renderAccountBadge(user) {
     if (user.photoURL) {
@@ -199,13 +281,13 @@ import {
     renderAccountBadge(user);
     showAppShell();
 
+    let isNewAccount = false;
     try {
       const snap = await fetchUserDoc(user.uid);
       if (snap.exists()) {
         applyRemoteData(snap.data());
-      } else if (routines.length > 0 || history.length > 0 || activeWorkout) {
-        showImportModal();
       } else {
+        isNewAccount = true;
         remoteVersion = 0;
       }
     } catch (err) {
@@ -219,6 +301,21 @@ import {
 
     authResolved = true;
     maybeHideLoadingScreen();
+
+    // Onboarding, in order: pick a name (first time only) -> offer to import
+    // any existing local data into the new account -> greet with a welcome screen.
+    if (!preferredName) {
+      await promptForName(user);
+    }
+    if (isNewAccount) {
+      const hasLocalData = routines.length > 0 || history.length > 0 || cardioLog.length > 0 || activeWorkout;
+      if (hasLocalData) {
+        await promptImport();
+      } else {
+        pushNow();
+      }
+    }
+    showWelcomeScreen();
   }
 
   function handleSignedOut() {
@@ -613,6 +710,143 @@ import {
     renderRoutineSelect();
     closeRoutineModal();
   });
+
+  /* ---------------------------------------------------------------------
+     CARDIO TAB
+  --------------------------------------------------------------------- */
+  const cardioMachineInput = document.getElementById('cardio-machine-input');
+  const cardioInclineInput = document.getElementById('cardio-incline-input');
+  const cardioSpeedInput = document.getElementById('cardio-speed-input');
+  const cardioDurationInput = document.getElementById('cardio-duration-input');
+  const cardioLogBtn = document.getElementById('cardio-log-btn');
+  const cardioCancelEditBtn = document.getElementById('cardio-cancel-edit-btn');
+  const cardioListEl = document.getElementById('cardio-list');
+  const noCardioMsg = document.getElementById('no-cardio-msg');
+
+  let editingCardioId = null;
+
+  function resetCardioForm() {
+    editingCardioId = null;
+    cardioMachineInput.value = '';
+    cardioInclineInput.value = '';
+    cardioSpeedInput.value = '';
+    cardioDurationInput.value = '';
+    cardioLogBtn.textContent = 'Log Cardio';
+    cardioCancelEditBtn.classList.add('hidden');
+  }
+
+  function startEditCardio(entry) {
+    editingCardioId = entry.id;
+    cardioMachineInput.value = entry.machine;
+    cardioInclineInput.value = entry.incline ?? '';
+    cardioSpeedInput.value = entry.speed ?? '';
+    cardioDurationInput.value = entry.durationMinutes ?? '';
+    cardioLogBtn.textContent = 'Update Session';
+    cardioCancelEditBtn.classList.remove('hidden');
+    cardioMachineInput.focus();
+  }
+
+  cardioCancelEditBtn.addEventListener('click', resetCardioForm);
+
+  cardioLogBtn.addEventListener('click', () => {
+    const machine = cardioMachineInput.value.trim();
+    const duration = parseFloat(cardioDurationInput.value);
+    if (!machine) {
+      alert('Enter a machine or activity (e.g. Treadmill).');
+      cardioMachineInput.focus();
+      return;
+    }
+    if (!duration || duration <= 0) {
+      alert('Enter how long you did it for (minutes).');
+      cardioDurationInput.focus();
+      return;
+    }
+    const incline = cardioInclineInput.value.trim();
+    const speed = cardioSpeedInput.value.trim();
+
+    if (editingCardioId) {
+      const entry = cardioLog.find(c => c.id === editingCardioId);
+      if (entry) {
+        entry.machine = machine;
+        entry.incline = incline || null;
+        entry.speed = speed || null;
+        entry.durationMinutes = duration;
+      }
+    } else {
+      cardioLog.unshift({
+        id: uid(),
+        date: new Date().toISOString(),
+        machine,
+        incline: incline || null,
+        speed: speed || null,
+        durationMinutes: duration,
+      });
+    }
+
+    saveCardio();
+    resetCardioForm();
+    renderCardioList();
+  });
+
+  function renderCardioList() {
+    cardioListEl.innerHTML = '';
+    noCardioMsg.classList.toggle('hidden', cardioLog.length > 0);
+
+    cardioLog
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .forEach(entry => {
+        const item = document.createElement('div');
+        item.className = 'cardio-item';
+
+        const left = document.createElement('div');
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'cardio-item-name';
+        nameDiv.textContent = entry.machine;
+        left.appendChild(nameDiv);
+
+        const detailBits = [`${entry.durationMinutes} min`];
+        if (entry.speed) detailBits.push(`${entry.speed} speed`);
+        if (entry.incline) detailBits.push(`${entry.incline} incline`);
+        const detailDiv = document.createElement('div');
+        detailDiv.className = 'cardio-item-detail muted';
+        detailDiv.textContent = detailBits.join('  ·  ');
+        left.appendChild(detailDiv);
+
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'cardio-item-date muted';
+        dateDiv.textContent = formatDate(entry.date);
+        left.appendChild(dateDiv);
+
+        item.appendChild(left);
+
+        const actions = document.createElement('div');
+        actions.className = 'routine-item-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn icon-btn';
+        editBtn.textContent = '✎';
+        editBtn.title = 'Edit session';
+        editBtn.addEventListener('click', () => startEditCardio(entry));
+        actions.appendChild(editBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn icon-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete session';
+        delBtn.addEventListener('click', () => {
+          if (!confirm('Delete this cardio session?')) return;
+          cardioLog = cardioLog.filter(c => c.id !== entry.id);
+          if (editingCardioId === entry.id) resetCardioForm();
+          saveCardio();
+          renderCardioList();
+        });
+        actions.appendChild(delBtn);
+
+        item.appendChild(actions);
+        cardioListEl.appendChild(item);
+      });
+  }
 
   /* ---------------------------------------------------------------------
      HISTORY TAB
@@ -1076,6 +1310,7 @@ import {
   renderRoutinesList();
   renderHistoryList();
   renderActiveWorkout();
+  renderCardioList();
   renderTimer();
 })();
 

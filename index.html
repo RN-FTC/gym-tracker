@@ -103,6 +103,7 @@
   <nav class="tabs">
     <button class="tab-btn active" data-tab="workout">Workout</button>
     <button class="tab-btn" data-tab="routines">Routines</button>
+    <button class="tab-btn" data-tab="cardio">Cardio</button>
     <button class="tab-btn" data-tab="history">History</button>
   </nav>
 </header>
@@ -152,6 +153,51 @@
         <button id="new-routine-btn" class="btn primary">+ New Routine</button>
       </div>
       <div id="routines-list"></div>
+    </div>
+  </section>
+
+  <!-- CARDIO TAB -->
+  <section id="tab-cardio" class="tab-panel">
+    <div class="card">
+      <h2>Log cardio</h2>
+      <div class="cardio-form">
+        <label class="field-label">Machine / activity</label>
+        <input type="text" id="cardio-machine-input" list="cardio-machine-options" placeholder="e.g. Treadmill" />
+        <datalist id="cardio-machine-options">
+          <option value="Treadmill"></option>
+          <option value="Elliptical"></option>
+          <option value="Stationary Bike"></option>
+          <option value="Stairmaster"></option>
+          <option value="Rowing Machine"></option>
+          <option value="Outdoor Run"></option>
+          <option value="Outdoor Cycling"></option>
+        </datalist>
+
+        <div class="cardio-form-row">
+          <div class="cardio-field">
+            <label class="field-label">Incline <span class="muted">(optional)</span></label>
+            <input type="number" id="cardio-incline-input" min="0" step="any" placeholder="e.g. 3" />
+          </div>
+          <div class="cardio-field">
+            <label class="field-label">Speed <span class="muted">(optional)</span></label>
+            <input type="number" id="cardio-speed-input" min="0" step="any" placeholder="e.g. 6.0" />
+          </div>
+        </div>
+
+        <label class="field-label">Duration <span class="muted">(minutes)</span></label>
+        <input type="number" id="cardio-duration-input" min="0" step="any" placeholder="e.g. 30" />
+
+        <div class="row cardio-form-actions">
+          <button id="cardio-log-btn" class="btn primary">Log Cardio</button>
+          <button id="cardio-cancel-edit-btn" class="btn ghost hidden">Cancel edit</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cardio history</h2>
+      <div id="cardio-list"></div>
+      <p id="no-cardio-msg" class="muted hidden">No cardio sessions logged yet.</p>
     </div>
   </section>
 
@@ -226,7 +272,40 @@
   </div>
 </div>
 
+<!-- NAME PROMPT MODAL (shown once on first sign-in) -->
+<div id="name-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>What should we call you?</h2>
+    <p class="muted">This is just how the app greets you — not shared with anyone.</p>
+    <input type="text" id="name-input" placeholder="Your name" />
+    <div class="modal-actions">
+      <button id="name-confirm-btn" class="btn primary">Continue</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- /#app-shell -->
+
+<!-- WELCOME SCREEN (shown briefly after each sign-in) -->
+<div id="welcome-screen" class="hidden">
+  <div class="loading-glow"></div>
+  <div class="loader-content">
+    <div class="loader-mark">
+      <svg viewBox="0 0 100 100" class="loader-bar-icon">
+        <g stroke="#5ea1ff" stroke-width="8" stroke-linecap="round">
+          <line x1="18" y1="50" x2="82" y2="50"/>
+          <line x1="28" y1="34" x2="28" y2="66"/>
+          <line x1="72" y1="34" x2="72" y2="66"/>
+          <line x1="14" y1="40" x2="14" y2="60"/>
+          <line x1="86" y1="40" x2="86" y2="60"/>
+        </g>
+      </svg>
+    </div>
+    <div class="loader-title" id="welcome-greeting">Good morning</div>
+    <div class="loader-subtitle" id="welcome-stat">Let's log your first workout.</div>
+    <button id="welcome-continue-btn" class="btn primary welcome-continue-btn">Let's train →</button>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>
