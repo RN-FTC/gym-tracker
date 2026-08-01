@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Gym Tracker</title>
+
+<meta name="theme-color" content="#070b16" />
+<meta name="color-scheme" content="dark" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Gym Tracker" />
+<meta name="format-detection" content="telephone=no" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a1224'/%3E%3Cg stroke='%235ea1ff' stroke-width='8' stroke-linecap='round'%3E%3Cline x1='18' y1='50' x2='82' y2='50'/%3E%3Cline x1='28' y1='34' x2='28' y2='66'/%3E%3Cline x1='72' y1='34' x2='72' y2='66'/%3E%3Cline x1='14' y1='40' x2='14' y2='60'/%3E%3Cline x1='86' y1='40' x2='86' y2='60'/%3E%3C/g%3E%3C/svg%3E" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <div class="loading-glow"></div>
+  <div class="loader-content">
+    <div class="loader-mark">
+      <svg viewBox="0 0 100 100" class="loader-bar-icon">
+        <g stroke="#5ea1ff" stroke-width="8" stroke-linecap="round">
+          <line x1="18" y1="50" x2="82" y2="50"/>
+          <line x1="28" y1="34" x2="28" y2="66"/>
+          <line x1="72" y1="34" x2="72" y2="66"/>
+          <line x1="14" y1="40" x2="14" y2="60"/>
+          <line x1="86" y1="40" x2="86" y2="60"/>
+        </g>
+      </svg>
+    </div>
+    <div class="loader-title">Gym Tracker</div>
+    <div class="loader-bar-track"><div class="loader-bar-fill"></div></div>
+    <div class="loader-subtitle">Loading your gains…</div>
+  </div>
+</div>
+
+<!-- SIGN-IN GATE -->
+<div id="signin-gate" class="hidden">
+  <div class="loading-glow"></div>
+  <div class="loader-content">
+    <div class="loader-mark">
+      <svg viewBox="0 0 100 100" class="loader-bar-icon">
+        <g stroke="#5ea1ff" stroke-width="8" stroke-linecap="round">
+          <line x1="18" y1="50" x2="82" y2="50"/>
+          <line x1="28" y1="34" x2="28" y2="66"/>
+          <line x1="72" y1="34" x2="72" y2="66"/>
+          <line x1="14" y1="40" x2="14" y2="60"/>
+          <line x1="86" y1="40" x2="86" y2="60"/>
+        </g>
+      </svg>
+    </div>
+    <div class="loader-title">Gym Tracker</div>
+    <div class="loader-subtitle">Sign in to sync your workouts across devices</div>
+    <button id="google-signin-btn" class="btn primary google-signin-btn">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.9-2.26 5.36-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.94 23.94 0 0 0 0 24c0 3.87.92 7.53 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <p id="signin-error" class="signin-error hidden"></p>
+  </div>
+</div>
+
+<div id="app-shell" class="hidden">
+
+<header class="topbar">
+  <div class="topbar-row">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 100 100" width="22" height="22">
+          <g stroke="#5ea1ff" stroke-width="10" stroke-linecap="round">
+            <line x1="18" y1="50" x2="82" y2="50"/>
+            <line x1="28" y1="32" x2="28" y2="68"/>
+            <line x1="72" y1="32" x2="72" y2="68"/>
+            <line x1="12" y1="40" x2="12" y2="60"/>
+            <line x1="88" y1="40" x2="88" y2="60"/>
+          </g>
+        </svg>
+      </span>
+      <h1>Gym Tracker</h1>
+    </div>
+    <div class="account-badge">
+      <img id="account-avatar" class="account-avatar hidden" alt="" />
+      <button id="sign-out-btn" class="btn icon-btn" title="Sign out">⎋</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="workout">Workout</button>
+    <button class="tab-btn" data-tab="routines">Routines</button>
+    <button class="tab-btn" data-tab="history">History</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- WORKOUT TAB -->
+  <section id="tab-workout" class="tab-panel active">
+
+    <div id="workout-picker" class="card">
+      <h2>Start a workout</h2>
+      <div class="row">
+        <select id="routine-select">
+          <option value="">Select a routine…</option>
+        </select>
+        <button id="start-workout-btn" class="btn primary">Start</button>
+      </div>
+      <p id="no-routines-msg" class="muted hidden">You don't have any routines yet. Create one in the Routines tab.</p>
+    </div>
+
+    <div id="active-workout" class="card hidden">
+      <div class="active-header">
+        <div>
+          <h2 id="active-routine-name">Routine</h2>
+          <span id="active-date" class="muted"></span>
+        </div>
+        <button id="finish-workout-btn" class="btn primary">Finish &amp; Save</button>
+      </div>
+
+      <div id="exercise-list"></div>
+
+      <div class="row add-exercise-row">
+        <input type="text" id="new-exercise-input" placeholder="Add exercise…" />
+        <button id="add-exercise-btn" class="btn ghost">+ Add exercise</button>
+      </div>
+
+      <button id="cancel-workout-btn" class="btn danger-ghost">Cancel workout</button>
+    </div>
+
+  </section>
+
+  <!-- ROUTINES TAB -->
+  <section id="tab-routines" class="tab-panel">
+    <div class="card">
+      <div class="active-header">
+        <h2>Your routines</h2>
+        <button id="new-routine-btn" class="btn primary">+ New Routine</button>
+      </div>
+      <div id="routines-list"></div>
+    </div>
+  </section>
+
+  <!-- HISTORY TAB -->
+  <section id="tab-history" class="tab-panel">
+    <div class="card">
+      <h2>Workout history</h2>
+      <div id="history-list"></div>
+      <p id="no-history-msg" class="muted hidden">No workouts logged yet.</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- REST TIMER WIDGET -->
+<div id="rest-timer" class="rest-timer">
+  <div class="timer-ring-wrap" id="timer-ring-wrap">
+    <svg class="timer-ring" viewBox="0 0 120 120">
+      <circle class="timer-ring-bg" cx="60" cy="60" r="52" />
+      <circle class="timer-ring-progress" id="timer-ring-progress" cx="60" cy="60" r="52" />
+    </svg>
+    <div class="timer-ring-label">
+      <div class="rest-timer-display" id="timer-display">01:30</div>
+      <div class="timer-ring-sub">REST</div>
+    </div>
+  </div>
+
+  <div class="rest-timer-controls">
+    <div class="timer-presets" id="timer-presets">
+      <button type="button" class="preset-chip" data-secs="30">30</button>
+      <button type="button" class="preset-chip" data-secs="60">60</button>
+      <button type="button" class="preset-chip active" data-secs="90">90</button>
+      <button type="button" class="preset-chip" data-secs="120">120</button>
+      <button type="button" class="preset-chip" data-secs="180">180</button>
+    </div>
+    <div class="row timer-btn-row">
+      <input type="number" id="timer-seconds-input" min="5" step="5" value="90" title="Rest duration (seconds)" />
+      <button id="timer-start-btn" class="btn small primary">Start</button>
+      <button id="timer-pause-btn" class="btn small ghost hidden">Pause</button>
+      <button id="timer-reset-btn" class="btn small ghost">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ROUTINE EDITOR MODAL -->
+<div id="routine-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="routine-modal-title">New Routine</h2>
+    <label class="field-label">Routine name</label>
+    <input type="text" id="routine-name-input" placeholder="e.g. Push Day" />
+
+    <label class="field-label">Exercises</label>
+    <div id="routine-exercise-inputs"></div>
+    <button id="routine-add-exercise-btn" class="btn ghost">+ Add exercise</button>
+
+    <div class="modal-actions">
+      <button id="routine-cancel-btn" class="btn ghost">Cancel</button>
+      <button id="routine-save-btn" class="btn primary">Save Routine</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT LOCAL DATA MODAL (shown once on first sign-in if local data exists) -->
+<div id="import-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Import existing data?</h2>
+    <p class="muted">This browser has workout data saved locally that isn't in your account yet. Import it to your account so it syncs across devices?</p>
+    <div class="modal-actions">
+      <button id="import-skip-btn" class="btn ghost">Skip</button>
+      <button id="import-confirm-btn" class="btn primary">Import</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#app-shell -->
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

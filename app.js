@@ -1,0 +1,1086 @@
+import {
+  signInWithGoogle,
+  signOut,
+  watchAuthState,
+  fetchUserDoc,
+  writeUserDoc,
+  watchUserDoc,
+} from './firebase-init.js';
+
+(() => {
+  'use strict';
+
+  /* ---------------------------------------------------------------------
+     Storage keys & helpers — localStorage is a write-through cache;
+     Firestore (see AUTH & CLOUD SYNC below) is the source of truth once signed in.
+  --------------------------------------------------------------------- */
+  const LS_ROUTINES = 'gymtracker_routines';
+  const LS_HISTORY = 'gymtracker_history';
+  const LS_ACTIVE = 'gymtracker_active_workout';
+
+  const uid = () =>
+    (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+
+  function load(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+      console.error('Failed to load', key, e);
+      return fallback;
+    }
+  }
+
+  function save(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  let routines = load(LS_ROUTINES, []);
+  let history = load(LS_HISTORY, []);
+  let activeWorkout = load(LS_ACTIVE, null); // { routineId, routineName, startedAt, exercises: [{name, sets: [{weight, reps}]}] }
+
+  function persistLocal() {
+    save(LS_ROUTINES, routines);
+    save(LS_HISTORY, history);
+    save(LS_ACTIVE, activeWorkout);
+  }
+
+  const saveRoutines = () => { persistLocal(); schedulePush(); };
+  const saveHistory = () => { persistLocal(); schedulePush(); };
+  const saveActive = () => { persistLocal(); schedulePush(); };
+  const clearActive = () => { activeWorkout = null; persistLocal(); schedulePush(); };
+
+  /* ---------------------------------------------------------------------
+     AUTH & CLOUD SYNC
+  --------------------------------------------------------------------- */
+  const signinGate = document.getElementById('signin-gate');
+  const appShell = document.getElementById('app-shell');
+  const googleSigninBtn = document.getElementById('google-signin-btn');
+  const signinErrorEl = document.getElementById('signin-error');
+  const accountAvatar = document.getElementById('account-avatar');
+  const signOutBtn = document.getElementById('sign-out-btn');
+  const importModal = document.getElementById('import-modal');
+  const importSkipBtn = document.getElementById('import-skip-btn');
+  const importConfirmBtn = document.getElementById('import-confirm-btn');
+  const loadingScreen = document.getElementById('loading-screen');
+
+  let currentUser = null;
+  let unsubscribeUserDoc = null;
+  let remoteVersion = 0;
+  let pushTimer = null;
+
+  // Which screen (sign-in gate vs app) should be revealed once the loading
+  // splash is done. Kept separate from the reveal itself so the splash never
+  // crossfades with mismatched content underneath — see maybeHideLoadingScreen().
+  let pendingView = null; // 'signin' | 'app'
+
+  function isLoadingScreenGone() {
+    return !loadingScreen || loadingScreen.classList.contains('hide');
+  }
+
+  function revealPendingView() {
+    if (pendingView === 'signin') {
+      signinGate.classList.remove('hidden');
+      appShell.classList.add('hidden');
+    } else if (pendingView === 'app') {
+      appShell.classList.remove('hidden');
+      signinGate.classList.add('hidden');
+    }
+  }
+
+  function showSigninGate() {
+    pendingView = 'signin';
+    if (isLoadingScreenGone()) revealPendingView();
+  }
+
+  function showAppShell() {
+    pendingView = 'app';
+    if (isLoadingScreenGone()) revealPendingView();
+  }
+
+  function pushNow() {
+    if (!currentUser) return Promise.resolve();
+    remoteVersion += 1;
+    return writeUserDoc(currentUser.uid, {
+      routines,
+      history,
+      activeWorkout,
+      version: remoteVersion,
+      updatedAt: Date.now(),
+    }).catch(err => console.error('Cloud sync failed', err));
+  }
+
+  function schedulePush() {
+    if (!currentUser) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, 500);
+  }
+
+  // Applies a remote Firestore doc to local state, unless it's just an echo of
+  // our own last push (same version we just wrote) — avoids re-rendering (and
+  // stealing focus from active inputs) on every round-trip of our own writes.
+  function applyRemoteData(data) {
+    if (!data) return;
+    if (typeof data.version === 'number' && data.version === remoteVersion) return;
+    if (typeof data.version === 'number') remoteVersion = data.version;
+    routines = data.routines || [];
+    history = data.history || [];
+    activeWorkout = data.activeWorkout || null;
+    persistLocal();
+    renderRoutineSelect();
+    renderRoutinesList();
+    renderHistoryList();
+    renderActiveWorkout();
+  }
+
+  function showImportModal() { importModal.classList.remove('hidden'); }
+  function closeImportModal() { importModal.classList.add('hidden'); }
+
+  importConfirmBtn.addEventListener('click', () => {
+    closeImportModal();
+    pushNow();
+  });
+
+  importSkipBtn.addEventListener('click', () => {
+    routines = [];
+    history = [];
+    activeWorkout = null;
+    persistLocal();
+    renderRoutineSelect();
+    renderRoutinesList();
+    renderHistoryList();
+    renderActiveWorkout();
+    closeImportModal();
+  });
+
+  function renderAccountBadge(user) {
+    if (user.photoURL) {
+      accountAvatar.src = user.photoURL;
+      accountAvatar.alt = user.displayName || user.email || 'Account';
+      accountAvatar.classList.remove('hidden');
+    } else {
+      accountAvatar.classList.add('hidden');
+    }
+  }
+
+  googleSigninBtn.addEventListener('click', () => {
+    signinErrorEl.classList.add('hidden');
+    googleSigninBtn.disabled = true;
+    signInWithGoogle()
+      .catch(err => {
+        console.error('Sign-in failed', err);
+        signinErrorEl.textContent = 'Sign-in failed — please try again.';
+        signinErrorEl.classList.remove('hidden');
+      })
+      .finally(() => { googleSigninBtn.disabled = false; });
+  });
+
+  signOutBtn.addEventListener('click', () => {
+    signOut().catch(err => console.error('Sign-out failed', err));
+  });
+
+  const LOADING_FADE_MS = 500; // must match #loading-screen's CSS transition duration
+
+  let authResolved = false;
+  let minSplashDelayDone = false;
+
+  function maybeHideLoadingScreen() {
+    if (authResolved && minSplashDelayDone && loadingScreen && !loadingScreen.classList.contains('hide')) {
+      loadingScreen.classList.add('hide');
+      // Wait for the splash to fully fade before revealing what's underneath,
+      // so the two full-screen panels never crossfade into a garbled overlap.
+      setTimeout(revealPendingView, LOADING_FADE_MS);
+    }
+  }
+  setTimeout(() => { minSplashDelayDone = true; maybeHideLoadingScreen(); }, 900);
+
+  async function handleSignedIn(user) {
+    currentUser = user;
+    renderAccountBadge(user);
+    showAppShell();
+
+    try {
+      const snap = await fetchUserDoc(user.uid);
+      if (snap.exists()) {
+        applyRemoteData(snap.data());
+      } else if (routines.length > 0 || history.length > 0 || activeWorkout) {
+        showImportModal();
+      } else {
+        remoteVersion = 0;
+      }
+    } catch (err) {
+      console.error('Failed to fetch cloud data', err);
+    }
+
+    if (unsubscribeUserDoc) unsubscribeUserDoc();
+    unsubscribeUserDoc = watchUserDoc(user.uid, snap => {
+      if (snap.exists()) applyRemoteData(snap.data());
+    });
+
+    authResolved = true;
+    maybeHideLoadingScreen();
+  }
+
+  function handleSignedOut() {
+    currentUser = null;
+    if (unsubscribeUserDoc) { unsubscribeUserDoc(); unsubscribeUserDoc = null; }
+    showSigninGate();
+    authResolved = true;
+    maybeHideLoadingScreen();
+  }
+
+  watchAuthState(user => {
+    if (user) handleSignedIn(user);
+    else handleSignedOut();
+  });
+
+  /* ---------------------------------------------------------------------
+     Tabs
+  --------------------------------------------------------------------- */
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabPanels = document.querySelectorAll('.tab-panel');
+
+  function switchTab(name) {
+    tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    tabPanels.forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  }
+
+  tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+  /* ---------------------------------------------------------------------
+     WORKOUT TAB
+  --------------------------------------------------------------------- */
+  const routineSelect = document.getElementById('routine-select');
+  const startWorkoutBtn = document.getElementById('start-workout-btn');
+  const noRoutinesMsg = document.getElementById('no-routines-msg');
+  const workoutPicker = document.getElementById('workout-picker');
+  const activeWorkoutEl = document.getElementById('active-workout');
+  const activeRoutineNameEl = document.getElementById('active-routine-name');
+  const activeDateEl = document.getElementById('active-date');
+  const exerciseListEl = document.getElementById('exercise-list');
+  const newExerciseInput = document.getElementById('new-exercise-input');
+  const addExerciseBtn = document.getElementById('add-exercise-btn');
+  const finishWorkoutBtn = document.getElementById('finish-workout-btn');
+  const cancelWorkoutBtn = document.getElementById('cancel-workout-btn');
+
+  function renderRoutineSelect() {
+    routineSelect.innerHTML = '<option value="">Select a routine…</option>';
+    routines.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.name;
+      routineSelect.appendChild(opt);
+    });
+    noRoutinesMsg.classList.toggle('hidden', routines.length > 0);
+  }
+
+  function formatDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) +
+      ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function startWorkout(routineId) {
+    const routine = routines.find(r => r.id === routineId);
+    if (!routine) return;
+    activeWorkout = {
+      routineId: routine.id,
+      routineName: routine.name,
+      startedAt: new Date().toISOString(),
+      exercises: routine.exercises.map(ex => ({ name: ex.name, sets: [] })),
+    };
+    saveActive();
+    renderActiveWorkout();
+  }
+
+  startWorkoutBtn.addEventListener('click', () => {
+    if (!routineSelect.value) return;
+    startWorkout(routineSelect.value);
+  });
+
+  function renderActiveWorkout() {
+    if (!activeWorkout) {
+      workoutPicker.classList.remove('hidden');
+      activeWorkoutEl.classList.add('hidden');
+      return;
+    }
+    workoutPicker.classList.add('hidden');
+    activeWorkoutEl.classList.remove('hidden');
+    activeRoutineNameEl.textContent = activeWorkout.routineName;
+    activeDateEl.textContent = formatDate(activeWorkout.startedAt);
+
+    exerciseListEl.innerHTML = '';
+    activeWorkout.exercises.forEach((ex, exIdx) => {
+      const block = document.createElement('div');
+      block.className = 'exercise-block';
+
+      const header = document.createElement('div');
+      header.className = 'exercise-header';
+      const h3 = document.createElement('h3');
+      h3.textContent = ex.name;
+      header.appendChild(h3);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn icon-btn';
+      removeBtn.title = 'Remove exercise';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        activeWorkout.exercises.splice(exIdx, 1);
+        saveActive();
+        renderActiveWorkout();
+      });
+      header.appendChild(removeBtn);
+      block.appendChild(header);
+
+      const table = document.createElement('table');
+      table.className = 'sets-table';
+      table.innerHTML = '<thead><tr><th></th><th>Weight</th><th>Reps</th><th></th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      ex.sets.forEach((set, setIdx) => {
+        const tr = document.createElement('tr');
+
+        const numTd = document.createElement('td');
+        numTd.className = 'set-num';
+        numTd.textContent = setIdx + 1;
+        tr.appendChild(numTd);
+
+        const weightTd = document.createElement('td');
+        const weightInput = document.createElement('input');
+        weightInput.type = 'number';
+        weightInput.min = '0';
+        weightInput.step = 'any';
+        weightInput.placeholder = '0';
+        weightInput.value = set.weight ?? '';
+        weightInput.addEventListener('input', () => {
+          set.weight = weightInput.value;
+          saveActive();
+        });
+        weightTd.appendChild(weightInput);
+        tr.appendChild(weightTd);
+
+        const repsTd = document.createElement('td');
+        const repsInput = document.createElement('input');
+        repsInput.type = 'number';
+        repsInput.min = '0';
+        repsInput.step = '1';
+        repsInput.placeholder = '0';
+        repsInput.value = set.reps ?? '';
+        repsInput.addEventListener('input', () => {
+          set.reps = repsInput.value;
+          saveActive();
+        });
+        repsTd.appendChild(repsInput);
+        tr.appendChild(repsTd);
+
+        const delTd = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn icon-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete set';
+        delBtn.addEventListener('click', () => {
+          ex.sets.splice(setIdx, 1);
+          saveActive();
+          renderActiveWorkout();
+        });
+        delTd.appendChild(delBtn);
+        tr.appendChild(delTd);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      block.appendChild(table);
+
+      const addSetBtn = document.createElement('button');
+      addSetBtn.className = 'add-set-btn';
+      addSetBtn.textContent = '+ Add set';
+      addSetBtn.addEventListener('click', () => {
+        const last = ex.sets[ex.sets.length - 1];
+        ex.sets.push({ weight: last ? last.weight : '', reps: last ? last.reps : '' });
+        saveActive();
+        renderActiveWorkout();
+      });
+      block.appendChild(addSetBtn);
+
+      exerciseListEl.appendChild(block);
+    });
+  }
+
+  addExerciseBtn.addEventListener('click', () => {
+    const name = newExerciseInput.value.trim();
+    if (!name || !activeWorkout) return;
+    activeWorkout.exercises.push({ name, sets: [] });
+    newExerciseInput.value = '';
+    saveActive();
+    renderActiveWorkout();
+  });
+
+  newExerciseInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') addExerciseBtn.click();
+  });
+
+  finishWorkoutBtn.addEventListener('click', () => {
+    if (!activeWorkout) return;
+    const cleaned = activeWorkout.exercises
+      .map(ex => ({
+        name: ex.name,
+        sets: ex.sets
+          .filter(s => (s.weight !== '' && s.weight != null) || (s.reps !== '' && s.reps != null))
+          .map(s => ({ weight: s.weight || '0', reps: s.reps || '0' })),
+      }))
+      .filter(ex => ex.sets.length > 0);
+
+    if (cleaned.length === 0) {
+      if (!confirm('No sets were logged. Discard this workout?')) return;
+      clearActive();
+      renderActiveWorkout();
+      return;
+    }
+
+    history.unshift({
+      id: uid(),
+      date: activeWorkout.startedAt,
+      routineId: activeWorkout.routineId,
+      routineName: activeWorkout.routineName,
+      exercises: cleaned,
+    });
+    saveHistory();
+    clearActive();
+    renderActiveWorkout();
+    renderHistoryList();
+    switchTab('history');
+  });
+
+  cancelWorkoutBtn.addEventListener('click', () => {
+    if (!confirm('Cancel this workout? Unsaved logging will be lost.')) return;
+    clearActive();
+    renderActiveWorkout();
+  });
+
+  /* ---------------------------------------------------------------------
+     ROUTINES TAB
+  --------------------------------------------------------------------- */
+  const routinesListEl = document.getElementById('routines-list');
+  const newRoutineBtn = document.getElementById('new-routine-btn');
+
+  const routineModal = document.getElementById('routine-modal');
+  const routineModalTitle = document.getElementById('routine-modal-title');
+  const routineNameInput = document.getElementById('routine-name-input');
+  const routineExerciseInputsEl = document.getElementById('routine-exercise-inputs');
+  const routineAddExerciseBtn = document.getElementById('routine-add-exercise-btn');
+  const routineCancelBtn = document.getElementById('routine-cancel-btn');
+  const routineSaveBtn = document.getElementById('routine-save-btn');
+
+  let editingRoutineId = null;
+
+  function renderRoutinesList() {
+    routinesListEl.innerHTML = '';
+    if (routines.length === 0) {
+      routinesListEl.innerHTML = '<p class="muted">No routines yet. Create your first one above.</p>';
+      return;
+    }
+    routines.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'routine-item';
+
+      const left = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'routine-item-name';
+      name.textContent = r.name;
+      left.appendChild(name);
+
+      const preview = document.createElement('div');
+      preview.className = 'routine-tag-preview';
+      preview.textContent = r.exercises.length
+        ? r.exercises.map(e => e.name).join(', ')
+        : 'No exercises';
+      left.appendChild(preview);
+
+      item.appendChild(left);
+
+      const actions = document.createElement('div');
+      actions.className = 'routine-item-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn icon-btn';
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit routine';
+      editBtn.addEventListener('click', () => openRoutineModal(r.id));
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn icon-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete routine';
+      delBtn.addEventListener('click', () => {
+        if (!confirm(`Delete routine "${r.name}"? This won't affect past history.`)) return;
+        routines = routines.filter(x => x.id !== r.id);
+        saveRoutines();
+        renderRoutinesList();
+        renderRoutineSelect();
+      });
+      actions.appendChild(delBtn);
+
+      item.appendChild(actions);
+      routinesListEl.appendChild(item);
+    });
+  }
+
+  function addRoutineExerciseRow(value = '') {
+    const row = document.createElement('div');
+    row.className = 'routine-exercise-row';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Exercise name';
+    input.value = value;
+    row.appendChild(input);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn icon-btn';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => row.remove());
+    row.appendChild(removeBtn);
+
+    routineExerciseInputsEl.appendChild(row);
+    return input;
+  }
+
+  function openRoutineModal(routineId = null) {
+    editingRoutineId = routineId;
+    routineExerciseInputsEl.innerHTML = '';
+
+    if (routineId) {
+      const r = routines.find(x => x.id === routineId);
+      routineModalTitle.textContent = 'Edit Routine';
+      routineNameInput.value = r.name;
+      if (r.exercises.length) {
+        r.exercises.forEach(ex => addRoutineExerciseRow(ex.name));
+      } else {
+        addRoutineExerciseRow();
+      }
+    } else {
+      routineModalTitle.textContent = 'New Routine';
+      routineNameInput.value = '';
+      addRoutineExerciseRow();
+      addRoutineExerciseRow();
+      addRoutineExerciseRow();
+    }
+
+    routineModal.classList.remove('hidden');
+    routineNameInput.focus();
+  }
+
+  function closeRoutineModal() {
+    routineModal.classList.add('hidden');
+    editingRoutineId = null;
+  }
+
+  newRoutineBtn.addEventListener('click', () => openRoutineModal());
+  routineAddExerciseBtn.addEventListener('click', () => addRoutineExerciseRow());
+  routineCancelBtn.addEventListener('click', closeRoutineModal);
+  routineModal.addEventListener('click', e => { if (e.target === routineModal) closeRoutineModal(); });
+
+  routineSaveBtn.addEventListener('click', () => {
+    const name = routineNameInput.value.trim();
+    if (!name) {
+      alert('Please give this routine a name.');
+      routineNameInput.focus();
+      return;
+    }
+    const exerciseNames = Array.from(routineExerciseInputsEl.querySelectorAll('input'))
+      .map(i => i.value.trim())
+      .filter(Boolean);
+
+    if (editingRoutineId) {
+      const r = routines.find(x => x.id === editingRoutineId);
+      r.name = name;
+      r.exercises = exerciseNames.map(n => {
+        const existing = r.exercises.find(e => e.name === n);
+        return existing || { id: uid(), name: n };
+      });
+    } else {
+      routines.push({
+        id: uid(),
+        name,
+        exercises: exerciseNames.map(n => ({ id: uid(), name: n })),
+      });
+    }
+
+    saveRoutines();
+    renderRoutinesList();
+    renderRoutineSelect();
+    closeRoutineModal();
+  });
+
+  /* ---------------------------------------------------------------------
+     HISTORY TAB
+  --------------------------------------------------------------------- */
+  const historyListEl = document.getElementById('history-list');
+  const noHistoryMsg = document.getElementById('no-history-msg');
+
+  const expandedHistoryIds = new Set();
+  let editingHistoryId = null;
+  let historyEditExercises = null; // working draft while editing an entry
+
+  function startEditHistory(entry) {
+    editingHistoryId = entry.id;
+    historyEditExercises = JSON.parse(JSON.stringify(entry.exercises));
+    expandedHistoryIds.add(entry.id);
+    renderHistoryList();
+  }
+
+  function cancelEditHistory() {
+    editingHistoryId = null;
+    historyEditExercises = null;
+    renderHistoryList();
+  }
+
+  function saveEditHistory(entry) {
+    const cleaned = historyEditExercises
+      .map(ex => ({
+        name: ex.name,
+        sets: ex.sets
+          .filter(s => (s.weight !== '' && s.weight != null) || (s.reps !== '' && s.reps != null))
+          .map(s => ({ weight: s.weight || '0', reps: s.reps || '0' })),
+      }))
+      .filter(ex => ex.sets.length > 0);
+
+    if (cleaned.length === 0) {
+      alert('A workout needs at least one logged set. Add a set, or delete this entry instead.');
+      return;
+    }
+
+    entry.exercises = cleaned;
+    saveHistory();
+    editingHistoryId = null;
+    historyEditExercises = null;
+    renderHistoryList();
+  }
+
+  // Builds an editable exercise list (name, sets, add/remove) bound to `exercises`,
+  // calling `onStructureChange` after any add/remove so the caller can re-render.
+  function buildHistoryExerciseEditor(exercises, onStructureChange) {
+    const wrap = document.createElement('div');
+
+    exercises.forEach((ex, exIdx) => {
+      const block = document.createElement('div');
+      block.className = 'exercise-block';
+
+      const header = document.createElement('div');
+      header.className = 'exercise-header';
+      const h3 = document.createElement('h3');
+      h3.textContent = ex.name;
+      header.appendChild(h3);
+
+      const removeExerciseBtn = document.createElement('button');
+      removeExerciseBtn.className = 'btn icon-btn';
+      removeExerciseBtn.title = 'Remove exercise';
+      removeExerciseBtn.textContent = '✕';
+      removeExerciseBtn.addEventListener('click', () => {
+        exercises.splice(exIdx, 1);
+        onStructureChange();
+      });
+      header.appendChild(removeExerciseBtn);
+      block.appendChild(header);
+
+      const table = document.createElement('table');
+      table.className = 'sets-table';
+      table.innerHTML = '<thead><tr><th></th><th>Weight</th><th>Reps</th><th></th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      ex.sets.forEach((set, setIdx) => {
+        const tr = document.createElement('tr');
+
+        const numTd = document.createElement('td');
+        numTd.className = 'set-num';
+        numTd.textContent = setIdx + 1;
+        tr.appendChild(numTd);
+
+        const weightTd = document.createElement('td');
+        const weightInput = document.createElement('input');
+        weightInput.type = 'number';
+        weightInput.min = '0';
+        weightInput.step = 'any';
+        weightInput.placeholder = '0';
+        weightInput.value = set.weight ?? '';
+        weightInput.addEventListener('input', () => { set.weight = weightInput.value; });
+        weightTd.appendChild(weightInput);
+        tr.appendChild(weightTd);
+
+        const repsTd = document.createElement('td');
+        const repsInput = document.createElement('input');
+        repsInput.type = 'number';
+        repsInput.min = '0';
+        repsInput.step = '1';
+        repsInput.placeholder = '0';
+        repsInput.value = set.reps ?? '';
+        repsInput.addEventListener('input', () => { set.reps = repsInput.value; });
+        repsTd.appendChild(repsInput);
+        tr.appendChild(repsTd);
+
+        const delTd = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn icon-btn';
+        delBtn.textContent = '✕';
+        delBtn.title = 'Delete set';
+        delBtn.addEventListener('click', () => {
+          ex.sets.splice(setIdx, 1);
+          onStructureChange();
+        });
+        delTd.appendChild(delBtn);
+        tr.appendChild(delTd);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      block.appendChild(table);
+
+      const addSetBtn = document.createElement('button');
+      addSetBtn.className = 'add-set-btn';
+      addSetBtn.textContent = '+ Add set';
+      addSetBtn.addEventListener('click', () => {
+        const last = ex.sets[ex.sets.length - 1];
+        ex.sets.push({ weight: last ? last.weight : '', reps: last ? last.reps : '' });
+        onStructureChange();
+      });
+      block.appendChild(addSetBtn);
+
+      wrap.appendChild(block);
+    });
+
+    const addExerciseRow = document.createElement('div');
+    addExerciseRow.className = 'row add-exercise-row';
+    const newExInput = document.createElement('input');
+    newExInput.type = 'text';
+    newExInput.placeholder = 'Add exercise…';
+    const newExBtn = document.createElement('button');
+    newExBtn.className = 'btn ghost';
+    newExBtn.textContent = '+ Add exercise';
+    const commitNewExercise = () => {
+      const name = newExInput.value.trim();
+      if (!name) return;
+      exercises.push({ name, sets: [] });
+      onStructureChange();
+    };
+    newExBtn.addEventListener('click', commitNewExercise);
+    newExInput.addEventListener('keydown', e => { if (e.key === 'Enter') commitNewExercise(); });
+    addExerciseRow.appendChild(newExInput);
+    addExerciseRow.appendChild(newExBtn);
+    wrap.appendChild(addExerciseRow);
+
+    return wrap;
+  }
+
+  function renderHistoryList() {
+    historyListEl.innerHTML = '';
+    noHistoryMsg.classList.toggle('hidden', history.length > 0);
+
+    history
+      .slice()
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .forEach(entry => {
+        const isEditing = editingHistoryId === entry.id;
+        const isOpen = isEditing || expandedHistoryIds.has(entry.id);
+
+        const item = document.createElement('div');
+        item.className = 'history-item';
+
+        const head = document.createElement('div');
+        head.className = 'history-item-head';
+
+        const left = document.createElement('div');
+        const dateEl = document.createElement('div');
+        dateEl.className = 'history-item-date';
+        dateEl.textContent = formatDate(entry.date);
+        left.appendChild(dateEl);
+
+        const tag = document.createElement('span');
+        tag.className = 'routine-tag';
+        tag.textContent = entry.routineName;
+        left.appendChild(tag);
+
+        head.appendChild(left);
+
+        const caret = document.createElement('span');
+        caret.className = 'muted';
+        caret.textContent = isOpen ? '▴' : '▾';
+        head.appendChild(caret);
+
+        item.appendChild(head);
+
+        const details = document.createElement('div');
+        details.className = 'history-item-details' + (isOpen ? ' open' : '');
+
+        if (isEditing) {
+          details.appendChild(
+            buildHistoryExerciseEditor(historyEditExercises, () => renderHistoryList())
+          );
+
+          const editActions = document.createElement('div');
+          editActions.className = 'row history-item-actions';
+
+          const saveBtn = document.createElement('button');
+          saveBtn.className = 'btn primary small';
+          saveBtn.textContent = 'Save changes';
+          saveBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            saveEditHistory(entry);
+          });
+          editActions.appendChild(saveBtn);
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.className = 'btn ghost small';
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            cancelEditHistory();
+          });
+          editActions.appendChild(cancelBtn);
+
+          details.appendChild(editActions);
+        } else {
+          entry.exercises.forEach(ex => {
+            const exDiv = document.createElement('div');
+            exDiv.className = 'history-exercise';
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'history-exercise-name';
+            nameDiv.textContent = ex.name;
+            exDiv.appendChild(nameDiv);
+
+            const setsDiv = document.createElement('div');
+            setsDiv.className = 'history-sets';
+            setsDiv.textContent = ex.sets
+              .map((s, i) => `Set ${i + 1}: ${s.weight} × ${s.reps}`)
+              .join('  ·  ');
+            exDiv.appendChild(setsDiv);
+
+            details.appendChild(exDiv);
+          });
+
+          const actions = document.createElement('div');
+          actions.className = 'row history-item-actions';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn ghost small';
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            startEditHistory(entry);
+          });
+          actions.appendChild(editBtn);
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn ghost small';
+          delBtn.textContent = 'Delete entry';
+          delBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            if (!confirm('Delete this workout from history?')) return;
+            history = history.filter(h => h.id !== entry.id);
+            saveHistory();
+            renderHistoryList();
+          });
+          actions.appendChild(delBtn);
+
+          details.appendChild(actions);
+        }
+
+        item.appendChild(details);
+
+        head.addEventListener('click', () => {
+          if (isEditing) return;
+          if (expandedHistoryIds.has(entry.id)) {
+            expandedHistoryIds.delete(entry.id);
+          } else {
+            expandedHistoryIds.add(entry.id);
+          }
+          renderHistoryList();
+        });
+
+        historyListEl.appendChild(item);
+      });
+  }
+
+  /* ---------------------------------------------------------------------
+     REST TIMER
+  --------------------------------------------------------------------- */
+  const timerDisplay = document.getElementById('timer-display');
+  const timerSecondsInput = document.getElementById('timer-seconds-input');
+  const timerStartBtn = document.getElementById('timer-start-btn');
+  const timerPauseBtn = document.getElementById('timer-pause-btn');
+  const timerResetBtn = document.getElementById('timer-reset-btn');
+  const restTimerEl = document.getElementById('rest-timer');
+  const timerRingProgress = document.getElementById('timer-ring-progress');
+  const timerPresetsEl = document.getElementById('timer-presets');
+
+  const RING_RADIUS = 52;
+  const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+  timerRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
+
+  let timerTotalSeconds = 90;
+  let timerRemaining = 90;
+  let timerIntervalId = null;
+  let timerRunning = false;
+  const originalTitle = document.title;
+
+  function formatTime(totalSeconds) {
+    const s = Math.max(0, Math.round(totalSeconds));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function renderTimer() {
+    timerDisplay.textContent = formatTime(timerRemaining);
+
+    const fraction = timerTotalSeconds > 0 ? timerRemaining / timerTotalSeconds : 0;
+    const offset = RING_CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, fraction)));
+    timerRingProgress.style.strokeDashoffset = String(offset);
+
+    timerRingProgress.classList.toggle('low', timerRemaining > 0 && timerRemaining <= 10);
+    timerRingProgress.classList.toggle('done', timerRemaining <= 0 && restTimerEl.classList.contains('alerting'));
+
+    timerPresetsEl.querySelectorAll('.preset-chip').forEach(chip => {
+      chip.classList.toggle('active', Number(chip.dataset.secs) === timerTotalSeconds);
+    });
+  }
+
+  function stopAlerting() {
+    restTimerEl.classList.remove('alerting');
+    document.title = originalTitle;
+    renderTimer();
+  }
+
+  function playBeep() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      const beepOnce = (startTime) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.3);
+      };
+      const now = ctx.currentTime;
+      beepOnce(now);
+      beepOnce(now + 0.4);
+      beepOnce(now + 0.8);
+      setTimeout(() => ctx.close(), 1500);
+    } catch (e) {
+      console.warn('Audio alert unavailable', e);
+    }
+  }
+
+  function onTimerDone() {
+    timerRunning = false;
+    timerIntervalId && clearInterval(timerIntervalId);
+    timerIntervalId = null;
+    timerStartBtn.textContent = 'Start';
+    timerStartBtn.classList.remove('hidden');
+    timerPauseBtn.classList.add('hidden');
+    playBeep();
+    restTimerEl.classList.add('alerting');
+    renderTimer();
+    let flip = false;
+    const flashInterval = setInterval(() => {
+      document.title = flip ? originalTitle : '⏰ Rest over!';
+      flip = !flip;
+    }, 800);
+    setTimeout(() => { clearInterval(flashInterval); stopAlerting(); }, 6000);
+  }
+
+  function tick() {
+    timerRemaining -= 1;
+    if (timerRemaining <= 0) {
+      timerRemaining = 0;
+      renderTimer();
+      onTimerDone();
+      return;
+    }
+    renderTimer();
+  }
+
+  function startTimer() {
+    stopAlerting();
+    if (timerRemaining <= 0) {
+      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+      timerRemaining = timerTotalSeconds;
+    }
+    timerRunning = true;
+    timerStartBtn.classList.add('hidden');
+    timerPauseBtn.classList.remove('hidden');
+    timerIntervalId = setInterval(tick, 1000);
+    renderTimer();
+  }
+
+  function pauseTimer() {
+    timerRunning = false;
+    timerIntervalId && clearInterval(timerIntervalId);
+    timerIntervalId = null;
+    timerStartBtn.textContent = 'Resume';
+    timerStartBtn.classList.remove('hidden');
+    timerPauseBtn.classList.add('hidden');
+  }
+
+  function resetTimer() {
+    timerRunning = false;
+    timerIntervalId && clearInterval(timerIntervalId);
+    timerIntervalId = null;
+    timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+    timerRemaining = timerTotalSeconds;
+    timerStartBtn.textContent = 'Start';
+    timerStartBtn.classList.remove('hidden');
+    timerPauseBtn.classList.add('hidden');
+    stopAlerting();
+    renderTimer();
+  }
+
+  timerStartBtn.addEventListener('click', startTimer);
+  timerPauseBtn.addEventListener('click', pauseTimer);
+  timerResetBtn.addEventListener('click', resetTimer);
+  timerSecondsInput.addEventListener('change', () => {
+    if (!timerRunning) {
+      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+      timerRemaining = timerTotalSeconds;
+      timerStartBtn.textContent = 'Start';
+      renderTimer();
+    }
+  });
+
+  timerPresetsEl.addEventListener('click', e => {
+    const chip = e.target.closest('.preset-chip');
+    if (!chip) return;
+    const secs = Number(chip.dataset.secs);
+    timerSecondsInput.value = secs;
+    if (!timerRunning) {
+      timerTotalSeconds = secs;
+      timerRemaining = secs;
+      timerStartBtn.textContent = 'Start';
+      stopAlerting();
+    }
+  });
+
+  /* ---------------------------------------------------------------------
+     Init
+  --------------------------------------------------------------------- */
+  renderRoutineSelect();
+  renderRoutinesList();
+  renderHistoryList();
+  renderActiveWorkout();
+  renderTimer();
+})();
+
+// Safety net: force-hide the loading screen even if app.js threw before reaching init.
+setTimeout(() => {
+  const el = document.getElementById('loading-screen');
+  if (el) el.classList.add('hide');
+}, 4000);
