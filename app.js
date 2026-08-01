@@ -1474,11 +1474,30 @@ import {
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
   timerRingProgress.style.strokeDasharray = String(RING_CIRCUMFERENCE);
 
+  const LS_TIMER = 'gymtracker_timer_state';
+
   let timerTotalSeconds = 90;
-  let timerRemaining = 90;
+  let timerRemaining = 90; // authoritative only when idle/paused — see getRemainingSeconds()
+  let timerEndAt = null; // epoch ms the countdown reaches zero; set only while running
   let timerIntervalId = null;
   let timerRunning = false;
   const originalTitle = document.title;
+
+  // Wall-clock based, not tick-counted — a backgrounded tab gets its JS timers
+  // throttled or suspended by the browser, so counting down "-1 per tick" drifts
+  // or stalls. Deriving remaining time from an absolute end-timestamp means the
+  // countdown is always correct the instant we get a chance to check it again,
+  // whether that's the next tick or the moment the app comes back to the foreground.
+  function getRemainingSeconds() {
+    if (timerRunning && timerEndAt) {
+      return Math.max(0, Math.round((timerEndAt - Date.now()) / 1000));
+    }
+    return timerRemaining;
+  }
+
+  function persistTimerState() {
+    save(LS_TIMER, { timerTotalSeconds, timerRemaining, timerEndAt, timerRunning });
+  }
 
   function formatTime(totalSeconds) {
     const s = Math.max(0, Math.round(totalSeconds));
@@ -1488,14 +1507,15 @@ import {
   }
 
   function renderTimer() {
-    timerDisplay.textContent = formatTime(timerRemaining);
+    const remaining = getRemainingSeconds();
+    timerDisplay.textContent = formatTime(remaining);
 
-    const fraction = timerTotalSeconds > 0 ? timerRemaining / timerTotalSeconds : 0;
+    const fraction = timerTotalSeconds > 0 ? remaining / timerTotalSeconds : 0;
     const offset = RING_CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, fraction)));
     timerRingProgress.style.strokeDashoffset = String(offset);
 
-    timerRingProgress.classList.toggle('low', timerRemaining > 0 && timerRemaining <= 10);
-    timerRingProgress.classList.toggle('done', timerRemaining <= 0 && restTimerEl.classList.contains('alerting'));
+    timerRingProgress.classList.toggle('low', remaining > 0 && remaining <= 10);
+    timerRingProgress.classList.toggle('done', remaining <= 0 && restTimerEl.classList.contains('alerting'));
 
     timerPresetsEl.querySelectorAll('.preset-chip').forEach(chip => {
       chip.classList.toggle('active', Number(chip.dataset.secs) === timerTotalSeconds);
@@ -1537,6 +1557,8 @@ import {
 
   function onTimerDone() {
     timerRunning = false;
+    timerEndAt = null;
+    timerRemaining = 0;
     timerIntervalId && clearInterval(timerIntervalId);
     timerIntervalId = null;
     timerStartBtn.textContent = 'Start';
@@ -1545,6 +1567,7 @@ import {
     playBeep();
     restTimerEl.classList.add('alerting');
     renderTimer();
+    persistTimerState();
     let flip = false;
     const flashInterval = setInterval(() => {
       document.title = flip ? originalTitle : '⏰ Rest over!';
@@ -1560,11 +1583,8 @@ import {
   }
 
   function tick() {
-    timerRemaining -= 1;
     pulseDisplay();
-    if (timerRemaining <= 0) {
-      timerRemaining = 0;
-      renderTimer();
+    if (getRemainingSeconds() <= 0) {
       onTimerDone();
       return;
     }
@@ -1573,28 +1593,37 @@ import {
 
   function startTimer() {
     stopAlerting();
-    if (timerRemaining <= 0) {
+    const remaining = getRemainingSeconds();
+    if (remaining <= 0) {
       timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
       timerRemaining = timerTotalSeconds;
+    } else {
+      timerRemaining = remaining;
     }
     timerRunning = true;
+    timerEndAt = Date.now() + timerRemaining * 1000;
     timerStartBtn.classList.add('hidden');
     timerPauseBtn.classList.remove('hidden');
     timerIntervalId = setInterval(tick, 1000);
+    persistTimerState();
     renderTimer();
   }
 
   function pauseTimer() {
+    timerRemaining = getRemainingSeconds();
     timerRunning = false;
+    timerEndAt = null;
     timerIntervalId && clearInterval(timerIntervalId);
     timerIntervalId = null;
     timerStartBtn.textContent = 'Resume';
     timerStartBtn.classList.remove('hidden');
     timerPauseBtn.classList.add('hidden');
+    persistTimerState();
   }
 
   function resetTimer() {
     timerRunning = false;
+    timerEndAt = null;
     timerIntervalId && clearInterval(timerIntervalId);
     timerIntervalId = null;
     timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
@@ -1603,6 +1632,7 @@ import {
     timerStartBtn.classList.remove('hidden');
     timerPauseBtn.classList.add('hidden');
     stopAlerting();
+    persistTimerState();
     renderTimer();
   }
 
@@ -1614,6 +1644,7 @@ import {
       timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
       timerRemaining = timerTotalSeconds;
       timerStartBtn.textContent = 'Start';
+      persistTimerState();
       renderTimer();
     }
   });
@@ -1621,13 +1652,16 @@ import {
   function nudgeTimer(delta) {
     stopAlerting();
     if (timerRunning) {
-      timerRemaining = Math.max(5, timerRemaining + delta);
-      if (timerRemaining > timerTotalSeconds) timerTotalSeconds = timerRemaining;
+      const remaining = Math.max(5, getRemainingSeconds() + delta);
+      timerRemaining = remaining;
+      if (remaining > timerTotalSeconds) timerTotalSeconds = remaining;
+      timerEndAt = Date.now() + remaining * 1000;
     } else {
       timerTotalSeconds = Math.max(5, timerTotalSeconds + delta);
       timerRemaining = timerTotalSeconds;
     }
     timerSecondsInput.value = timerTotalSeconds;
+    persistTimerState();
     renderTimer();
   }
 
@@ -1644,8 +1678,57 @@ import {
       timerRemaining = secs;
       timerStartBtn.textContent = 'Start';
       stopAlerting();
+      persistTimerState();
     }
   });
+
+  // The moment the tab/app comes back into view, immediately resync from the
+  // wall clock instead of waiting for the next (possibly delayed) tick — this
+  // is what makes rest-over catch up right away rather than staying stale.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !timerRunning) return;
+    if (getRemainingSeconds() <= 0) {
+      timerIntervalId && clearInterval(timerIntervalId);
+      timerIntervalId = null;
+      onTimerDone();
+    } else {
+      renderTimer();
+    }
+  });
+
+  // Restores timer state across full reloads/relaunches (e.g. iOS reclaiming a
+  // backgrounded tab's memory) — a running timer picks up exactly where the
+  // wall clock says it should be, including firing the done-state immediately
+  // if time already ran out while the app was closed.
+  function restoreTimerState() {
+    const saved = load(LS_TIMER, null);
+    if (!saved) {
+      renderTimer();
+      return;
+    }
+    timerTotalSeconds = saved.timerTotalSeconds || 90;
+    timerSecondsInput.value = timerTotalSeconds;
+
+    if (saved.timerRunning && saved.timerEndAt) {
+      timerEndAt = saved.timerEndAt;
+      timerRunning = true;
+      if (getRemainingSeconds() <= 0) {
+        onTimerDone();
+      } else {
+        timerRemaining = getRemainingSeconds();
+        timerStartBtn.classList.add('hidden');
+        timerPauseBtn.classList.remove('hidden');
+        timerIntervalId = setInterval(tick, 1000);
+        renderTimer();
+      }
+    } else {
+      timerRemaining = typeof saved.timerRemaining === 'number' ? saved.timerRemaining : timerTotalSeconds;
+      if (timerRemaining > 0 && timerRemaining < timerTotalSeconds) {
+        timerStartBtn.textContent = 'Resume';
+      }
+      renderTimer();
+    }
+  }
 
   /* ---------------------------------------------------------------------
      Init
@@ -1656,7 +1739,7 @@ import {
   renderActiveWorkout();
   renderHome();
   renderWeightTab();
-  renderTimer();
+  restoreTimerState();
 })();
 
 // Safety net: force-hide the loading screen even if app.js threw before reaching init.

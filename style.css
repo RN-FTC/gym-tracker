@@ -1,20 +1,20 @@
 :root {
-  --bg: #070b16;
-  --bg-2: #0a1224;
-  --surface: #101a30;
-  --surface-2: #16223e;
-  --surface-3: #1c2a4a;
-  --border: #223258;
-  --border-soft: #1a2846;
-  --text: #eef2fb;
-  --text-muted: #8fa0c4;
-  --accent: #4f8cff;
-  --accent-2: #22d3ee;
-  --accent-soft: rgba(79, 140, 255, 0.15);
-  --danger: #f0655a;
-  --danger-hover: #ff8177;
-  --amber: #f5a524;
-  --success: #34d399;
+  --bg: #15130f;
+  --bg-2: #1b170f;
+  --surface: #211c15;
+  --surface-2: #29231a;
+  --surface-3: #332c20;
+  --border: #3c3323;
+  --border-soft: #2b2519;
+  --text: #f1ece1;
+  --text-muted: #a89a83;
+  --accent: #8ea86d;
+  --accent-2: #d38b5b;
+  --accent-soft: rgba(142, 168, 109, 0.16);
+  --danger: #c96650;
+  --danger-hover: #dd8069;
+  --amber: #c99a45;
+  --success: #7fa06b;
   --radius: 14px;
   --radius-sm: 9px;
   --shadow-glow: 0 0 0 1px var(--border), 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -41,8 +41,8 @@ body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   min-height: 100%;
   background:
-    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(79, 140, 255, 0.16), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(34, 211, 238, 0.10), transparent 55%),
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(142, 168, 109, 0.14), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 100% 10%, rgba(211, 139, 91, 0.09), transparent 55%),
     var(--bg);
   background-attachment: fixed;
   padding-bottom: calc(200px + var(--safe-bottom));
@@ -67,7 +67,7 @@ h2 { font-size: 1.05rem; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse 800px 600px at 50% 30%, #0f1c3a, #05070f 70%);
+  background: radial-gradient(ellipse 800px 600px at 50% 30%, #241e15, #0c0a07 70%);
   transition: opacity 0.5s ease, visibility 0.5s ease;
   overflow: hidden;
 }
@@ -88,7 +88,7 @@ h2 { font-size: 1.05rem; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse 800px 600px at 50% 30%, #0f1c3a, #05070f 70%);
+  background: radial-gradient(ellipse 800px 600px at 50% 30%, #241e15, #0c0a07 70%);
   overflow: hidden;
   padding: 24px;
 }
@@ -122,7 +122,7 @@ h2 { font-size: 1.05rem; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse 800px 600px at 50% 30%, #0f1c3a, #05070f 70%);
+  background: radial-gradient(ellipse 800px 600px at 50% 30%, #241e15, #0c0a07 70%);
   overflow: hidden;
   padding: 24px;
   opacity: 0;
@@ -153,7 +153,7 @@ h2 { font-size: 1.05rem; }
   width: 480px;
   height: 480px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(79, 140, 255, 0.35), transparent 70%);
+  background: radial-gradient(circle, rgba(142, 168, 109, 0.35), transparent 70%);
   filter: blur(20px);
   animation: glow-pulse 2.4s ease-in-out infinite;
 }
@@ -181,7 +181,7 @@ h2 { font-size: 1.05rem; }
   align-items: center;
   justify-content: center;
   animation: mark-bounce 1.4s ease-in-out infinite;
-  box-shadow: 0 0 30px rgba(79, 140, 255, 0.35);
+  box-shadow: 0 0 30px rgba(142, 168, 109, 0.35);
 }
 
 .loader-bar-icon { width: 34px; height: 34px; }
@@ -196,7 +196,7 @@ h2 { font-size: 1.05rem; }
   font-weight: 700;
   font-size: 1.3rem;
   letter-spacing: -0.02em;
-  background: linear-gradient(90deg, #eef2fb, #a9c4ff);
+  background: linear-gradient(90deg, #f1ece1, #bcc99e);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -236,7 +236,7 @@ h2 { font-size: 1.05rem; }
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(7, 11, 22, 0.78);
+  background: rgba(21, 19, 15, 0.8);
   backdrop-filter: blur(14px) saturate(150%);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
   border-bottom: 1px solid var(--border-soft);
@@ -329,10 +329,10 @@ h2 { font-size: 1.05rem; }
 .tab-btn:active { transform: scale(0.96); }
 
 .tab-btn.active {
-  color: #04101f;
+  color: #201a10;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   font-weight: 700;
-  box-shadow: 0 4px 14px rgba(79, 140, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(142, 168, 109, 0.3);
 }
 .tab-btn.active:hover { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 
@@ -391,9 +391,9 @@ main {
 .btn.primary {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border-color: transparent;
-  color: #04101f;
+  color: #201a10;
   font-weight: 700;
-  box-shadow: 0 4px 18px rgba(79, 140, 255, 0.35);
+  box-shadow: 0 4px 18px rgba(142, 168, 109, 0.35);
 }
 .btn.primary:hover { filter: brightness(1.08); }
 
@@ -411,7 +411,7 @@ main {
   margin-top: 14px;
   width: 100%;
 }
-.btn.danger-ghost:hover { background: rgba(240, 101, 90, 0.1); }
+.btn.danger-ghost:hover { background: rgba(201, 102, 80, 0.12); }
 
 .btn.small { padding: 8px 12px; font-size: 0.8rem; min-height: 38px; }
 
@@ -721,13 +721,13 @@ select { appearance: none; cursor: pointer; }
   padding: 3px 9px;
   border-radius: 999px;
   margin-top: 4px;
-  border: 1px solid rgba(79, 140, 255, 0.25);
+  border: 1px solid rgba(142, 168, 109, 0.28);
 }
 
 .cardio-tag {
-  background: rgba(245, 165, 36, 0.15);
+  background: rgba(201, 154, 69, 0.15);
   color: var(--amber);
-  border-color: rgba(245, 165, 36, 0.3);
+  border-color: rgba(201, 154, 69, 0.3);
 }
 
 .history-item-details {
@@ -752,7 +752,7 @@ select { appearance: none; cursor: pointer; }
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 16, 32, 0.85);
+  background: rgba(16, 14, 10, 0.85);
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   border-top: 1px solid var(--border-soft);
@@ -767,7 +767,7 @@ select { appearance: none; cursor: pointer; }
 }
 
 .rest-timer.alerting {
-  box-shadow: 0 -6px 30px rgba(240, 101, 90, 0.45);
+  box-shadow: 0 -6px 30px rgba(201, 102, 80, 0.45);
 }
 
 .timer-ring-wrap {
@@ -903,7 +903,7 @@ select { appearance: none; cursor: pointer; }
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(2, 5, 12, 0.7);
+  background: rgba(8, 6, 4, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
