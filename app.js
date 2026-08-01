@@ -6,6 +6,7 @@ import {
   writeUserDoc,
   watchUserDoc,
 } from './firebase-init.js';
+import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
 
 (() => {
   'use strict';
@@ -19,6 +20,8 @@ import {
   const LS_ACTIVE = 'gymtracker_active_workout';
   const LS_CARDIO = 'gymtracker_cardio';
   const LS_PROFILE = 'gymtracker_profile';
+  const LS_FOOD = 'gymtracker_food';
+  const LS_THEME = 'gymtracker_theme';
 
   const uid = () =>
     (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
@@ -43,6 +46,7 @@ import {
   let cardioLog = load(LS_CARDIO, []); // [{ id, date, machine, incline, speed, durationMinutes }]
   let preferredName = load(LS_PROFILE, {}).preferredName || null;
   let bodyStats = load(LS_PROFILE, {}).bodyStats || null; // { weightLb, heightFt, heightIn, age, sex, activityLevel }
+  let foodLog = load(LS_FOOD, []); // [{ id, date, description, calories, proteinG, carbG, fatG }]
 
   function persistLocal() {
     save(LS_ROUTINES, routines);
@@ -50,13 +54,65 @@ import {
     save(LS_ACTIVE, activeWorkout);
     save(LS_CARDIO, cardioLog);
     save(LS_PROFILE, { preferredName, bodyStats });
+    save(LS_FOOD, foodLog);
   }
 
   const saveRoutines = () => { persistLocal(); schedulePush(); };
   const saveHistory = () => { persistLocal(); schedulePush(); };
   const saveActive = () => { persistLocal(); schedulePush(); };
   const saveCardio = () => { persistLocal(); schedulePush(); };
+  const saveFood = () => { persistLocal(); schedulePush(); };
   const clearActive = () => { activeWorkout = null; persistLocal(); schedulePush(); };
+
+  /* ---------------------------------------------------------------------
+     THEME — light/dark/system. Local-device preference only (not synced to
+     Firestore), applied before auth resolves so even the sign-in gate is
+     themed correctly. The loading splash covers the brief moment this takes.
+  --------------------------------------------------------------------- */
+  const themeToggleEl = document.getElementById('theme-toggle');
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  let currentThemeChoice = load(LS_THEME, 'system');
+
+  function updateThemeColorMeta() {
+    if (!themeColorMeta) return;
+    requestAnimationFrame(() => {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      if (bg) themeColorMeta.setAttribute('content', bg);
+    });
+  }
+
+  function applyTheme(choice) {
+    currentThemeChoice = choice;
+    if (choice === 'light' || choice === 'dark') {
+      document.documentElement.setAttribute('data-theme', choice);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+    if (themeToggleEl) {
+      themeToggleEl.querySelectorAll('.theme-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.themeChoice === choice);
+      });
+    }
+    updateThemeColorMeta();
+  }
+
+  if (themeToggleEl) {
+    themeToggleEl.addEventListener('click', e => {
+      const chip = e.target.closest('.theme-chip');
+      if (!chip) return;
+      const choice = chip.dataset.themeChoice;
+      save(LS_THEME, choice);
+      applyTheme(choice);
+    });
+  }
+
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+      if (currentThemeChoice === 'system') updateThemeColorMeta();
+    });
+  }
+
+  applyTheme(currentThemeChoice);
 
   /* ---------------------------------------------------------------------
      AUTH & CLOUD SYNC
@@ -78,6 +134,10 @@ import {
   const welcomeGreetingEl = document.getElementById('welcome-greeting');
   const welcomeStatEl = document.getElementById('welcome-stat');
   const welcomeContinueBtn = document.getElementById('welcome-continue-btn');
+  const settingsAccountAvatar = document.getElementById('settings-account-avatar');
+  const settingsAccountName = document.getElementById('settings-account-name');
+  const settingsAccountEmail = document.getElementById('settings-account-email');
+  const settingsSignoutBtn = document.getElementById('settings-signout-btn');
 
   let currentUser = null;
   let unsubscribeUserDoc = null;
@@ -123,6 +183,7 @@ import {
       cardioLog,
       preferredName,
       bodyStats,
+      foodLog,
       version: remoteVersion,
       updatedAt: Date.now(),
     }).catch(err => console.error('Cloud sync failed', err));
@@ -147,6 +208,7 @@ import {
     cardioLog = data.cardioLog || [];
     if (data.preferredName) preferredName = data.preferredName;
     if (data.bodyStats) bodyStats = data.bodyStats;
+    foodLog = data.foodLog || [];
     persistLocal();
     renderRoutineSelect();
     renderRoutinesList();
@@ -180,12 +242,14 @@ import {
     history = [];
     activeWorkout = null;
     cardioLog = [];
+    foodLog = [];
     persistLocal();
     renderRoutineSelect();
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
     renderHome();
+    renderWeightTab();
     closeImportModal();
     if (importResolve) { importResolve(); importResolve = null; }
   });
@@ -244,9 +308,15 @@ import {
       accountAvatar.src = user.photoURL;
       accountAvatar.alt = user.displayName || user.email || 'Account';
       accountAvatar.classList.remove('hidden');
+      settingsAccountAvatar.src = user.photoURL;
+      settingsAccountAvatar.alt = user.displayName || user.email || 'Account';
+      settingsAccountAvatar.classList.remove('hidden');
     } else {
       accountAvatar.classList.add('hidden');
+      settingsAccountAvatar.classList.add('hidden');
     }
+    settingsAccountName.textContent = user.displayName || 'Signed in';
+    settingsAccountEmail.textContent = user.email || '';
   }
 
   googleSigninBtn.addEventListener('click', () => {
@@ -262,6 +332,10 @@ import {
   });
 
   signOutBtn.addEventListener('click', () => {
+    signOut().catch(err => console.error('Sign-out failed', err));
+  });
+
+  settingsSignoutBtn.addEventListener('click', () => {
     signOut().catch(err => console.error('Sign-out failed', err));
   });
 
@@ -312,7 +386,7 @@ import {
       await promptForName(user);
     }
     if (isNewAccount) {
-      const hasLocalData = routines.length > 0 || history.length > 0 || cardioLog.length > 0 || activeWorkout;
+      const hasLocalData = routines.length > 0 || history.length > 0 || cardioLog.length > 0 || foodLog.length > 0 || activeWorkout;
       if (hasLocalData) {
         await promptImport();
       } else {
@@ -937,8 +1011,11 @@ import {
     });
   }
 
+  let lastNutritionResult = null; // goal macros from the most recent calculation, used by the food log below
+
   function renderWeightResults(stats) {
     const result = calcNutrition(stats);
+    lastNutritionResult = result;
     weightResultsEl.classList.remove('hidden');
     weightBmiValueEl.textContent = result.bmi.toFixed(1);
     weightBmiTagEl.textContent = result.category.label;
@@ -948,6 +1025,7 @@ import {
     weightProteinValueEl.textContent = result.proteinG;
     weightCarbsValueEl.textContent = result.carbG;
     weightFatValueEl.textContent = result.fatG;
+    renderFoodLog();
   }
 
   function renderWeightTab() {
@@ -988,6 +1066,229 @@ import {
     persistLocal();
     schedulePush();
     renderWeightResults(bodyStats);
+  });
+
+  /* ---------------------------------------------------------------------
+     FOOD LOG — lives inside the Weight tab, tracked against the goal
+     macros computed above. AI estimate/photo-scan buttons are wired up
+     but disabled until a secure backend proxy exists (see README/worker/).
+  --------------------------------------------------------------------- */
+  const foodDescriptionInput = document.getElementById('food-description-input');
+  const foodAiEstimateBtn = document.getElementById('food-ai-estimate-btn');
+  const foodPhotoBtn = document.getElementById('food-photo-btn');
+  const foodPhotoInput = document.getElementById('food-photo-input');
+  const foodAiNote = document.getElementById('food-ai-note');
+  const foodCaloriesInput = document.getElementById('food-calories-input');
+  const foodProteinInput = document.getElementById('food-protein-input');
+  const foodCarbsInput = document.getElementById('food-carbs-input');
+  const foodFatInput = document.getElementById('food-fat-input');
+  const foodLogBtn = document.getElementById('food-log-btn');
+  const foodLogListEl = document.getElementById('food-log-list');
+  const foodLogEmptyMsg = document.getElementById('food-log-empty');
+  const foodCalFill = document.getElementById('food-cal-fill');
+  const foodCalText = document.getElementById('food-cal-text');
+  const foodProteinFill = document.getElementById('food-protein-fill');
+  const foodProteinText = document.getElementById('food-protein-text');
+  const foodCarbsFill = document.getElementById('food-carbs-fill');
+  const foodCarbsText = document.getElementById('food-carbs-text');
+  const foodFatFill = document.getElementById('food-fat-fill');
+  const foodFatText = document.getElementById('food-fat-text');
+
+  function isToday(isoDate) {
+    const d = new Date(isoDate);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
+  function setProgressBar(fillEl, textEl, consumed, goal, unit) {
+    const pct = goal > 0 ? Math.min(100, Math.round((consumed / goal) * 100)) : 0;
+    fillEl.style.width = pct + '%';
+    fillEl.classList.toggle('over', goal > 0 && consumed > goal);
+    textEl.textContent = `${Math.round(consumed)}${unit} / ${Math.round(goal)}${unit}`;
+  }
+
+  function renderFoodLog() {
+    const todays = foodLog.filter(f => isToday(f.date)).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const totals = todays.reduce((acc, f) => {
+      acc.calories += f.calories || 0;
+      acc.proteinG += f.proteinG || 0;
+      acc.carbG += f.carbG || 0;
+      acc.fatG += f.fatG || 0;
+      return acc;
+    }, { calories: 0, proteinG: 0, carbG: 0, fatG: 0 });
+
+    const goal = lastNutritionResult || { calorieTarget: 0, proteinG: 0, carbG: 0, fatG: 0 };
+    setProgressBar(foodCalFill, foodCalText, totals.calories, goal.calorieTarget, '');
+    setProgressBar(foodProteinFill, foodProteinText, totals.proteinG, goal.proteinG, 'g');
+    setProgressBar(foodCarbsFill, foodCarbsText, totals.carbG, goal.carbG, 'g');
+    setProgressBar(foodFatFill, foodFatText, totals.fatG, goal.fatG, 'g');
+
+    foodLogListEl.innerHTML = '';
+    foodLogEmptyMsg.classList.toggle('hidden', todays.length > 0);
+
+    todays.forEach(entry => {
+      const row = document.createElement('div');
+      row.className = 'home-recent-item';
+
+      const left = document.createElement('div');
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'home-recent-title';
+      titleDiv.textContent = entry.description;
+      left.appendChild(titleDiv);
+
+      const detailDiv = document.createElement('div');
+      detailDiv.className = 'muted home-recent-date';
+      detailDiv.textContent = `${Math.round(entry.calories || 0)} cal  ·  ${Math.round(entry.proteinG || 0)}g P  ·  ${Math.round(entry.carbG || 0)}g C  ·  ${Math.round(entry.fatG || 0)}g F`;
+      left.appendChild(detailDiv);
+
+      row.appendChild(left);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn icon-btn';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Delete entry';
+      delBtn.addEventListener('click', () => {
+        foodLog = foodLog.filter(f => f.id !== entry.id);
+        saveFood();
+        renderFoodLog();
+      });
+      row.appendChild(delBtn);
+
+      foodLogListEl.appendChild(row);
+    });
+  }
+
+  foodLogBtn.addEventListener('click', () => {
+    const description = foodDescriptionInput.value.trim();
+    if (!description) {
+      alert('Enter what you ate.');
+      foodDescriptionInput.focus();
+      return;
+    }
+    const calories = parseFloat(foodCaloriesInput.value) || 0;
+    const proteinG = parseFloat(foodProteinInput.value) || 0;
+    const carbG = parseFloat(foodCarbsInput.value) || 0;
+    const fatG = parseFloat(foodFatInput.value) || 0;
+
+    if (!calories && !proteinG && !carbG && !fatG) {
+      alert('Enter at least an estimated calorie or macro amount.');
+      foodCaloriesInput.focus();
+      return;
+    }
+
+    foodLog.unshift({
+      id: uid(),
+      date: new Date().toISOString(),
+      description,
+      calories,
+      proteinG,
+      carbG,
+      fatG,
+    });
+    saveFood();
+
+    foodDescriptionInput.value = '';
+    foodCaloriesInput.value = '';
+    foodProteinInput.value = '';
+    foodCarbsInput.value = '';
+    foodFatInput.value = '';
+    renderFoodLog();
+    renderHome();
+  });
+
+  // AI estimate / photo scan call the Worker proxy in worker/ (see
+  // worker/README.md to deploy it) — the buttons stay disabled until
+  // AI_ESTIMATE_ENDPOINT (ai-config.js) is set to a real deployed URL.
+  const AI_ENABLED = Boolean(AI_ESTIMATE_ENDPOINT);
+
+  if (AI_ENABLED) {
+    foodAiEstimateBtn.disabled = false;
+    foodPhotoBtn.disabled = false;
+    foodAiNote.classList.add('hidden');
+  }
+
+  async function callAiEstimate(payload) {
+    const res = await fetch(AI_ESTIMATE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `Request failed (${res.status})`);
+    }
+    return res.json();
+  }
+
+  function fillFoodFieldsFromEstimate(estimate) {
+    if (estimate.label && !foodDescriptionInput.value.trim()) {
+      foodDescriptionInput.value = estimate.label;
+    }
+    foodCaloriesInput.value = Math.round(estimate.calories || 0);
+    foodProteinInput.value = Math.round(estimate.proteinG || 0);
+    foodCarbsInput.value = Math.round(estimate.carbG || 0);
+    foodFatInput.value = Math.round(estimate.fatG || 0);
+  }
+
+  foodAiEstimateBtn.addEventListener('click', async () => {
+    if (!AI_ENABLED) return;
+    const description = foodDescriptionInput.value.trim();
+    if (!description) {
+      alert('Describe what you ate first (e.g. "grilled chicken breast, 200g").');
+      foodDescriptionInput.focus();
+      return;
+    }
+    const originalLabel = foodAiEstimateBtn.textContent;
+    foodAiEstimateBtn.disabled = true;
+    foodAiEstimateBtn.textContent = 'Estimating…';
+    foodAiNote.classList.remove('hidden');
+    foodAiNote.textContent = 'Asking AI to estimate the macros…';
+    try {
+      const estimate = await callAiEstimate({ description });
+      fillFoodFieldsFromEstimate(estimate);
+      foodAiNote.textContent = 'Estimate filled in below — double check before adding.';
+    } catch (err) {
+      console.error('AI estimate failed', err);
+      foodAiNote.textContent = 'Could not get an AI estimate: ' + err.message;
+    } finally {
+      foodAiEstimateBtn.disabled = false;
+      foodAiEstimateBtn.textContent = originalLabel;
+    }
+  });
+
+  foodPhotoBtn.addEventListener('click', () => {
+    if (!AI_ENABLED) return;
+    foodPhotoInput.click();
+  });
+
+  foodPhotoInput.addEventListener('change', async () => {
+    const file = foodPhotoInput.files && foodPhotoInput.files[0];
+    if (!file) return;
+    const originalLabel = foodPhotoBtn.textContent;
+    foodPhotoBtn.disabled = true;
+    foodPhotoBtn.textContent = 'Scanning…';
+    foodAiNote.classList.remove('hidden');
+    foodAiNote.textContent = 'Scanning photo…';
+    try {
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const estimate = await callAiEstimate({ imageBase64, mimeType: file.type || 'image/jpeg' });
+      foodDescriptionInput.value = estimate.label || foodDescriptionInput.value;
+      fillFoodFieldsFromEstimate(estimate);
+      foodAiNote.textContent = 'Estimate filled in below — double check before adding.';
+    } catch (err) {
+      console.error('AI photo scan failed', err);
+      foodAiNote.textContent = 'Could not scan that photo: ' + err.message;
+    } finally {
+      foodPhotoBtn.disabled = false;
+      foodPhotoBtn.textContent = originalLabel;
+      foodPhotoInput.value = '';
+    }
   });
 
   /* ---------------------------------------------------------------------
