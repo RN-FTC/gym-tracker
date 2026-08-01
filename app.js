@@ -149,7 +149,7 @@ import {
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
-    renderCardioList();
+    renderHome();
   }
 
   function showImportModal() { importModal.classList.remove('hidden'); }
@@ -181,7 +181,7 @@ import {
     renderRoutinesList();
     renderHistoryList();
     renderActiveWorkout();
-    renderCardioList();
+    renderHome();
     closeImportModal();
     if (importResolve) { importResolve(); importResolve = null; }
   });
@@ -343,6 +343,69 @@ import {
   }
 
   tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+  /* ---------------------------------------------------------------------
+     HOME TAB — dashboard: greeting, quick stats, quick actions, recent activity
+  --------------------------------------------------------------------- */
+  const homeGreetingEl = document.getElementById('home-greeting');
+  const homeDateEl = document.getElementById('home-date');
+  const homeStrengthCountEl = document.getElementById('home-strength-count');
+  const homeCardioCountEl = document.getElementById('home-cardio-count');
+  const homeWeekCountEl = document.getElementById('home-week-count');
+  const homeStartWorkoutBtn = document.getElementById('home-start-workout-btn');
+  const homeLogCardioBtn = document.getElementById('home-log-cardio-btn');
+  const homeViewHistoryBtn = document.getElementById('home-view-history-btn');
+  const homeRecentListEl = document.getElementById('home-recent-list');
+  const homeRecentEmptyMsg = document.getElementById('home-recent-empty');
+
+  homeStartWorkoutBtn.addEventListener('click', () => switchTab('workout'));
+  homeLogCardioBtn.addEventListener('click', () => switchTab('cardio'));
+  homeViewHistoryBtn.addEventListener('click', () => switchTab('history'));
+
+  function renderHome() {
+    const hour = new Date().getHours();
+    const timeGreeting = hour < 5 ? 'Good night' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    homeGreetingEl.textContent = preferredName ? `${timeGreeting}, ${preferredName}` : timeGreeting;
+    homeDateEl.textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+    const combined = getCombinedEntries();
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const thisWeekCount = combined.filter(e => new Date(e.date).getTime() >= weekAgo).length;
+
+    homeStrengthCountEl.textContent = history.length;
+    homeCardioCountEl.textContent = cardioLog.length;
+    homeWeekCountEl.textContent = thisWeekCount;
+
+    homeRecentListEl.innerHTML = '';
+    const recent = combined.slice(0, 3);
+    homeRecentEmptyMsg.classList.toggle('hidden', recent.length > 0);
+
+    recent.forEach(entry => {
+      const isCardio = entry.type === 'cardio';
+      const row = document.createElement('div');
+      row.className = 'home-recent-item';
+
+      const left = document.createElement('div');
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'home-recent-title';
+      titleDiv.textContent = isCardio ? entry.machine : entry.routineName;
+      left.appendChild(titleDiv);
+
+      const dateDiv = document.createElement('div');
+      dateDiv.className = 'muted home-recent-date';
+      dateDiv.textContent = formatDate(entry.date);
+      left.appendChild(dateDiv);
+
+      row.appendChild(left);
+
+      const tag = document.createElement('span');
+      tag.className = isCardio ? 'routine-tag cardio-tag' : 'routine-tag';
+      tag.textContent = isCardio ? 'Cardio' : 'Strength';
+      row.appendChild(tag);
+
+      homeRecentListEl.appendChild(row);
+    });
+  }
 
   /* ---------------------------------------------------------------------
      WORKOUT TAB
@@ -546,6 +609,7 @@ import {
     clearActive();
     renderActiveWorkout();
     renderHistoryList();
+    renderHome();
     switchTab('history');
   });
 
@@ -712,41 +776,13 @@ import {
   });
 
   /* ---------------------------------------------------------------------
-     CARDIO TAB
+     CARDIO TAB — logging only; past sessions live in the History tab
   --------------------------------------------------------------------- */
   const cardioMachineInput = document.getElementById('cardio-machine-input');
   const cardioInclineInput = document.getElementById('cardio-incline-input');
   const cardioSpeedInput = document.getElementById('cardio-speed-input');
   const cardioDurationInput = document.getElementById('cardio-duration-input');
   const cardioLogBtn = document.getElementById('cardio-log-btn');
-  const cardioCancelEditBtn = document.getElementById('cardio-cancel-edit-btn');
-  const cardioListEl = document.getElementById('cardio-list');
-  const noCardioMsg = document.getElementById('no-cardio-msg');
-
-  let editingCardioId = null;
-
-  function resetCardioForm() {
-    editingCardioId = null;
-    cardioMachineInput.value = '';
-    cardioInclineInput.value = '';
-    cardioSpeedInput.value = '';
-    cardioDurationInput.value = '';
-    cardioLogBtn.textContent = 'Log Cardio';
-    cardioCancelEditBtn.classList.add('hidden');
-  }
-
-  function startEditCardio(entry) {
-    editingCardioId = entry.id;
-    cardioMachineInput.value = entry.machine;
-    cardioInclineInput.value = entry.incline ?? '';
-    cardioSpeedInput.value = entry.speed ?? '';
-    cardioDurationInput.value = entry.durationMinutes ?? '';
-    cardioLogBtn.textContent = 'Update Session';
-    cardioCancelEditBtn.classList.remove('hidden');
-    cardioMachineInput.focus();
-  }
-
-  cardioCancelEditBtn.addEventListener('click', resetCardioForm);
 
   cardioLogBtn.addEventListener('click', () => {
     const machine = cardioMachineInput.value.trim();
@@ -764,114 +800,78 @@ import {
     const incline = cardioInclineInput.value.trim();
     const speed = cardioSpeedInput.value.trim();
 
-    if (editingCardioId) {
-      const entry = cardioLog.find(c => c.id === editingCardioId);
-      if (entry) {
-        entry.machine = machine;
-        entry.incline = incline || null;
-        entry.speed = speed || null;
-        entry.durationMinutes = duration;
-      }
-    } else {
-      cardioLog.unshift({
-        id: uid(),
-        date: new Date().toISOString(),
-        machine,
-        incline: incline || null,
-        speed: speed || null,
-        durationMinutes: duration,
-      });
-    }
+    cardioLog.unshift({
+      id: uid(),
+      date: new Date().toISOString(),
+      machine,
+      incline: incline || null,
+      speed: speed || null,
+      durationMinutes: duration,
+    });
 
     saveCardio();
-    resetCardioForm();
-    renderCardioList();
+    cardioMachineInput.value = '';
+    cardioInclineInput.value = '';
+    cardioSpeedInput.value = '';
+    cardioDurationInput.value = '';
+    renderHistoryList();
+    renderHome();
+    cardioMachineInput.focus();
   });
 
-  function renderCardioList() {
-    cardioListEl.innerHTML = '';
-    noCardioMsg.classList.toggle('hidden', cardioLog.length > 0);
-
-    cardioLog
-      .slice()
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .forEach(entry => {
-        const item = document.createElement('div');
-        item.className = 'cardio-item';
-
-        const left = document.createElement('div');
-        const nameDiv = document.createElement('div');
-        nameDiv.className = 'cardio-item-name';
-        nameDiv.textContent = entry.machine;
-        left.appendChild(nameDiv);
-
-        const detailBits = [`${entry.durationMinutes} min`];
-        if (entry.speed) detailBits.push(`${entry.speed} speed`);
-        if (entry.incline) detailBits.push(`${entry.incline} incline`);
-        const detailDiv = document.createElement('div');
-        detailDiv.className = 'cardio-item-detail muted';
-        detailDiv.textContent = detailBits.join('  ·  ');
-        left.appendChild(detailDiv);
-
-        const dateDiv = document.createElement('div');
-        dateDiv.className = 'cardio-item-date muted';
-        dateDiv.textContent = formatDate(entry.date);
-        left.appendChild(dateDiv);
-
-        item.appendChild(left);
-
-        const actions = document.createElement('div');
-        actions.className = 'routine-item-actions';
-
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn icon-btn';
-        editBtn.textContent = '✎';
-        editBtn.title = 'Edit session';
-        editBtn.addEventListener('click', () => startEditCardio(entry));
-        actions.appendChild(editBtn);
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'btn icon-btn';
-        delBtn.textContent = '✕';
-        delBtn.title = 'Delete session';
-        delBtn.addEventListener('click', () => {
-          if (!confirm('Delete this cardio session?')) return;
-          cardioLog = cardioLog.filter(c => c.id !== entry.id);
-          if (editingCardioId === entry.id) resetCardioForm();
-          saveCardio();
-          renderCardioList();
-        });
-        actions.appendChild(delBtn);
-
-        item.appendChild(actions);
-        cardioListEl.appendChild(item);
-      });
-  }
-
   /* ---------------------------------------------------------------------
-     HISTORY TAB
+     HISTORY TAB — a unified, date-sorted feed of strength workouts + cardio
   --------------------------------------------------------------------- */
   const historyListEl = document.getElementById('history-list');
   const noHistoryMsg = document.getElementById('no-history-msg');
 
   const expandedHistoryIds = new Set();
-  let editingHistoryId = null;
-  let historyEditExercises = null; // working draft while editing an entry
+  let editingEntryId = null;
+  let editingEntryType = null; // 'strength' | 'cardio'
+  let historyEditExercises = null; // working draft while editing a strength entry
+  let cardioEditDraft = null; // working draft while editing a cardio entry
 
-  function startEditHistory(entry) {
-    editingHistoryId = entry.id;
+  // Merges strength history + cardio sessions into one date-sorted feed.
+  // Shared by the History tab and the Home tab's recent-activity preview.
+  function getCombinedEntries() {
+    return [
+      ...history.map(h => ({ ...h, type: 'strength' })),
+      ...cardioLog.map(c => ({ ...c, type: 'cardio' })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  function startEditStrength(entry) {
+    editingEntryId = entry.id;
+    editingEntryType = 'strength';
     historyEditExercises = JSON.parse(JSON.stringify(entry.exercises));
     expandedHistoryIds.add(entry.id);
     renderHistoryList();
   }
 
-  function cancelEditHistory() {
-    editingHistoryId = null;
-    historyEditExercises = null;
+  function startEditCardioEntry(entry) {
+    editingEntryId = entry.id;
+    editingEntryType = 'cardio';
+    cardioEditDraft = {
+      machine: entry.machine,
+      incline: entry.incline,
+      speed: entry.speed,
+      durationMinutes: entry.durationMinutes,
+    };
+    expandedHistoryIds.add(entry.id);
     renderHistoryList();
   }
 
-  function saveEditHistory(entry) {
+  function cancelEditEntry() {
+    editingEntryId = null;
+    editingEntryType = null;
+    historyEditExercises = null;
+    cardioEditDraft = null;
+    renderHistoryList();
+  }
+
+  function saveEditStrength(entry) {
+    const real = history.find(h => h.id === entry.id);
+    if (!real) return;
     const cleaned = historyEditExercises
       .map(ex => ({
         name: ex.name,
@@ -886,11 +886,94 @@ import {
       return;
     }
 
-    entry.exercises = cleaned;
+    real.exercises = cleaned;
     saveHistory();
-    editingHistoryId = null;
-    historyEditExercises = null;
-    renderHistoryList();
+    cancelEditEntry();
+    renderHome();
+  }
+
+  function saveEditCardioEntry(entry) {
+    const real = cardioLog.find(c => c.id === entry.id);
+    if (!real) return;
+    const machine = (cardioEditDraft.machine || '').trim();
+    const duration = parseFloat(cardioEditDraft.durationMinutes);
+    if (!machine) {
+      alert('Enter a machine or activity.');
+      return;
+    }
+    if (!duration || duration <= 0) {
+      alert('Enter a valid duration.');
+      return;
+    }
+    real.machine = machine;
+    real.incline = (cardioEditDraft.incline ?? '').toString().trim() || null;
+    real.speed = (cardioEditDraft.speed ?? '').toString().trim() || null;
+    real.durationMinutes = duration;
+    saveCardio();
+    cancelEditEntry();
+    renderHome();
+  }
+
+  // Builds the inline editable fields (machine, incline, speed, duration) for a cardio draft.
+  function buildCardioFieldsEditor(draft) {
+    const wrap = document.createElement('div');
+    wrap.className = 'cardio-form';
+
+    const machineLabel = document.createElement('label');
+    machineLabel.className = 'field-label';
+    machineLabel.textContent = 'Machine / activity';
+    wrap.appendChild(machineLabel);
+    const machineInput = document.createElement('input');
+    machineInput.type = 'text';
+    machineInput.value = draft.machine || '';
+    machineInput.addEventListener('input', () => { draft.machine = machineInput.value; });
+    wrap.appendChild(machineInput);
+
+    const row = document.createElement('div');
+    row.className = 'cardio-form-row';
+
+    const inclineField = document.createElement('div');
+    inclineField.className = 'cardio-field';
+    const inclineLabel = document.createElement('label');
+    inclineLabel.className = 'field-label';
+    inclineLabel.textContent = 'Incline';
+    inclineField.appendChild(inclineLabel);
+    const inclineInput = document.createElement('input');
+    inclineInput.type = 'number';
+    inclineInput.step = 'any';
+    inclineInput.value = draft.incline ?? '';
+    inclineInput.addEventListener('input', () => { draft.incline = inclineInput.value; });
+    inclineField.appendChild(inclineInput);
+    row.appendChild(inclineField);
+
+    const speedField = document.createElement('div');
+    speedField.className = 'cardio-field';
+    const speedLabel = document.createElement('label');
+    speedLabel.className = 'field-label';
+    speedLabel.textContent = 'Speed';
+    speedField.appendChild(speedLabel);
+    const speedInput = document.createElement('input');
+    speedInput.type = 'number';
+    speedInput.step = 'any';
+    speedInput.value = draft.speed ?? '';
+    speedInput.addEventListener('input', () => { draft.speed = speedInput.value; });
+    speedField.appendChild(speedInput);
+    row.appendChild(speedField);
+
+    wrap.appendChild(row);
+
+    const durationLabel = document.createElement('label');
+    durationLabel.className = 'field-label';
+    durationLabel.textContent = 'Duration (minutes)';
+    wrap.appendChild(durationLabel);
+    const durationInput = document.createElement('input');
+    durationInput.type = 'number';
+    durationInput.step = 'any';
+    durationInput.value = draft.durationMinutes ?? '';
+    durationInput.addEventListener('input', () => { draft.durationMinutes = durationInput.value; });
+    wrap.appendChild(durationInput);
+
+    return wrap;
   }
 
   // Builds an editable exercise list (name, sets, add/remove) bound to `exercises`,
@@ -1010,131 +1093,196 @@ import {
 
   function renderHistoryList() {
     historyListEl.innerHTML = '';
-    noHistoryMsg.classList.toggle('hidden', history.length > 0);
+    const combined = getCombinedEntries();
+    noHistoryMsg.classList.toggle('hidden', combined.length > 0);
 
-    history
-      .slice()
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .forEach(entry => {
-        const isEditing = editingHistoryId === entry.id;
-        const isOpen = isEditing || expandedHistoryIds.has(entry.id);
+    combined.forEach(entry => {
+      const isEditing = editingEntryId === entry.id;
+      const isOpen = isEditing || expandedHistoryIds.has(entry.id);
+      const isCardio = entry.type === 'cardio';
 
-        const item = document.createElement('div');
-        item.className = 'history-item';
+      const item = document.createElement('div');
+      item.className = 'history-item';
 
-        const head = document.createElement('div');
-        head.className = 'history-item-head';
+      const head = document.createElement('div');
+      head.className = 'history-item-head';
 
-        const left = document.createElement('div');
-        const dateEl = document.createElement('div');
-        dateEl.className = 'history-item-date';
-        dateEl.textContent = formatDate(entry.date);
-        left.appendChild(dateEl);
+      const left = document.createElement('div');
+      const dateEl = document.createElement('div');
+      dateEl.className = 'history-item-date';
+      dateEl.textContent = formatDate(entry.date);
+      left.appendChild(dateEl);
 
-        const tag = document.createElement('span');
-        tag.className = 'routine-tag';
-        tag.textContent = entry.routineName;
-        left.appendChild(tag);
+      const tag = document.createElement('span');
+      tag.className = isCardio ? 'routine-tag cardio-tag' : 'routine-tag';
+      tag.textContent = isCardio ? 'Cardio' : entry.routineName;
+      left.appendChild(tag);
 
-        head.appendChild(left);
+      head.appendChild(left);
 
-        const caret = document.createElement('span');
-        caret.className = 'muted';
-        caret.textContent = isOpen ? '▴' : '▾';
-        head.appendChild(caret);
+      const caret = document.createElement('span');
+      caret.className = 'muted';
+      caret.textContent = isOpen ? '▴' : '▾';
+      head.appendChild(caret);
 
-        item.appendChild(head);
+      item.appendChild(head);
 
-        const details = document.createElement('div');
-        details.className = 'history-item-details' + (isOpen ? ' open' : '');
+      const details = document.createElement('div');
+      details.className = 'history-item-details' + (isOpen ? ' open' : '');
 
-        if (isEditing) {
-          details.appendChild(
-            buildHistoryExerciseEditor(historyEditExercises, () => renderHistoryList())
-          );
+      if (isEditing && isCardio) {
+        details.appendChild(buildCardioFieldsEditor(cardioEditDraft));
 
-          const editActions = document.createElement('div');
-          editActions.className = 'row history-item-actions';
+        const editActions = document.createElement('div');
+        editActions.className = 'row history-item-actions';
 
-          const saveBtn = document.createElement('button');
-          saveBtn.className = 'btn primary small';
-          saveBtn.textContent = 'Save changes';
-          saveBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            saveEditHistory(entry);
-          });
-          editActions.appendChild(saveBtn);
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn primary small';
+        saveBtn.textContent = 'Save changes';
+        saveBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          saveEditCardioEntry(entry);
+        });
+        editActions.appendChild(saveBtn);
 
-          const cancelBtn = document.createElement('button');
-          cancelBtn.className = 'btn ghost small';
-          cancelBtn.textContent = 'Cancel';
-          cancelBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            cancelEditHistory();
-          });
-          editActions.appendChild(cancelBtn);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn ghost small';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          cancelEditEntry();
+        });
+        editActions.appendChild(cancelBtn);
 
-          details.appendChild(editActions);
-        } else {
-          entry.exercises.forEach(ex => {
-            const exDiv = document.createElement('div');
-            exDiv.className = 'history-exercise';
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'history-exercise-name';
-            nameDiv.textContent = ex.name;
-            exDiv.appendChild(nameDiv);
+        details.appendChild(editActions);
+      } else if (isEditing) {
+        details.appendChild(
+          buildHistoryExerciseEditor(historyEditExercises, () => renderHistoryList())
+        );
 
-            const setsDiv = document.createElement('div');
-            setsDiv.className = 'history-sets';
-            setsDiv.textContent = ex.sets
-              .map((s, i) => `Set ${i + 1}: ${s.weight} × ${s.reps}`)
-              .join('  ·  ');
-            exDiv.appendChild(setsDiv);
+        const editActions = document.createElement('div');
+        editActions.className = 'row history-item-actions';
 
-            details.appendChild(exDiv);
-          });
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn primary small';
+        saveBtn.textContent = 'Save changes';
+        saveBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          saveEditStrength(entry);
+        });
+        editActions.appendChild(saveBtn);
 
-          const actions = document.createElement('div');
-          actions.className = 'row history-item-actions';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn ghost small';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          cancelEditEntry();
+        });
+        editActions.appendChild(cancelBtn);
 
-          const editBtn = document.createElement('button');
-          editBtn.className = 'btn ghost small';
-          editBtn.textContent = 'Edit';
-          editBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            startEditHistory(entry);
-          });
-          actions.appendChild(editBtn);
+        details.appendChild(editActions);
+      } else if (isCardio) {
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'history-exercise-name';
+        nameDiv.textContent = entry.machine;
+        details.appendChild(nameDiv);
 
-          const delBtn = document.createElement('button');
-          delBtn.className = 'btn ghost small';
-          delBtn.textContent = 'Delete entry';
-          delBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            if (!confirm('Delete this workout from history?')) return;
-            history = history.filter(h => h.id !== entry.id);
-            saveHistory();
-            renderHistoryList();
-          });
-          actions.appendChild(delBtn);
+        const detailBits = [`${entry.durationMinutes} min`];
+        if (entry.speed) detailBits.push(`${entry.speed} speed`);
+        if (entry.incline) detailBits.push(`${entry.incline} incline`);
+        const detailDiv = document.createElement('div');
+        detailDiv.className = 'history-sets';
+        detailDiv.textContent = detailBits.join('  ·  ');
+        details.appendChild(detailDiv);
 
-          details.appendChild(actions);
-        }
+        const actions = document.createElement('div');
+        actions.className = 'row history-item-actions';
 
-        item.appendChild(details);
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn ghost small';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          startEditCardioEntry(entry);
+        });
+        actions.appendChild(editBtn);
 
-        head.addEventListener('click', () => {
-          if (isEditing) return;
-          if (expandedHistoryIds.has(entry.id)) {
-            expandedHistoryIds.delete(entry.id);
-          } else {
-            expandedHistoryIds.add(entry.id);
-          }
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn ghost small';
+        delBtn.textContent = 'Delete entry';
+        delBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          if (!confirm('Delete this cardio session?')) return;
+          cardioLog = cardioLog.filter(c => c.id !== entry.id);
+          saveCardio();
           renderHistoryList();
+          renderHome();
+        });
+        actions.appendChild(delBtn);
+
+        details.appendChild(actions);
+      } else {
+        entry.exercises.forEach(ex => {
+          const exDiv = document.createElement('div');
+          exDiv.className = 'history-exercise';
+          const nameDiv = document.createElement('div');
+          nameDiv.className = 'history-exercise-name';
+          nameDiv.textContent = ex.name;
+          exDiv.appendChild(nameDiv);
+
+          const setsDiv = document.createElement('div');
+          setsDiv.className = 'history-sets';
+          setsDiv.textContent = ex.sets
+            .map((s, i) => `Set ${i + 1}: ${s.weight} × ${s.reps}`)
+            .join('  ·  ');
+          exDiv.appendChild(setsDiv);
+
+          details.appendChild(exDiv);
         });
 
-        historyListEl.appendChild(item);
+        const actions = document.createElement('div');
+        actions.className = 'row history-item-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn ghost small';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          startEditStrength(entry);
+        });
+        actions.appendChild(editBtn);
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn ghost small';
+        delBtn.textContent = 'Delete entry';
+        delBtn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          if (!confirm('Delete this workout from history?')) return;
+          history = history.filter(h => h.id !== entry.id);
+          saveHistory();
+          renderHistoryList();
+          renderHome();
+        });
+        actions.appendChild(delBtn);
+
+        details.appendChild(actions);
+      }
+
+      item.appendChild(details);
+
+      head.addEventListener('click', () => {
+        if (isEditing) return;
+        if (expandedHistoryIds.has(entry.id)) {
+          expandedHistoryIds.delete(entry.id);
+        } else {
+          expandedHistoryIds.add(entry.id);
+        }
+        renderHistoryList();
       });
+
+      historyListEl.appendChild(item);
+    });
   }
 
   /* ---------------------------------------------------------------------
@@ -1310,7 +1458,7 @@ import {
   renderRoutinesList();
   renderHistoryList();
   renderActiveWorkout();
-  renderCardioList();
+  renderHome();
   renderTimer();
 })();
 

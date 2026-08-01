@@ -294,29 +294,47 @@ h2 { font-size: 1.05rem; }
   gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-bottom: 12px;
 }
 .tabs::-webkit-scrollbar { display: none; }
 
 .tab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-muted);
-  padding: 10px 14px;
-  font-size: 0.9rem;
+  padding: 8px 15px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
   min-height: 44px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.tab-btn:hover { color: var(--text); }
+.tab-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.tab-btn:hover { color: var(--text); background: var(--surface-2); }
+.tab-btn:active { transform: scale(0.96); }
 
 .tab-btn.active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-  background: linear-gradient(180deg, transparent, var(--accent-soft) 400%);
+  color: #04101f;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(79, 140, 255, 0.3);
 }
+.tab-btn.active:hover { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 
 main {
   max-width: 640px;
@@ -450,6 +468,16 @@ select { appearance: none; cursor: pointer; }
   gap: 10px;
 }
 
+/* Like .active-header, but the trailing control stays compact on mobile
+   instead of stretching full-width (for lightweight "View all"-style links). */
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+
 .exercise-block {
   border-top: 1px solid var(--border-soft);
   padding: 14px 0;
@@ -562,19 +590,66 @@ select { appearance: none; cursor: pointer; }
   margin-top: 18px;
 }
 
-.cardio-item {
+.cardio-history-note {
+  margin-top: 12px;
+  margin-bottom: 0;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------------
+   Home
+--------------------------------------------------------------------- */
+.home-greeting-card { padding: 20px 18px; }
+.home-greeting-card h2 { font-size: 1.3rem; margin-bottom: 4px; }
+
+.home-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.home-stat-tile {
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.home-stat-value {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.home-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.home-quick-actions {
+  margin-bottom: 16px;
+}
+
+.home-quick-btn { flex: 1; }
+
+.home-recent-item {
   border-top: 1px solid var(--border-soft);
-  padding: 14px 0;
+  padding: 12px 0;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
 }
-.cardio-item:first-child { border-top: none; padding-top: 0; }
+.home-recent-item:first-child { border-top: none; padding-top: 0; }
 
-.cardio-item-name { font-weight: 600; margin-bottom: 2px; }
-.cardio-item-detail { font-size: 0.82rem; margin-bottom: 2px; }
-.cardio-item-date { font-size: 0.78rem; }
+.home-recent-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 2px; }
+.home-recent-date { font-size: 0.78rem; }
 
 /* ---------------------------------------------------------------------
    History
@@ -605,6 +680,12 @@ select { appearance: none; cursor: pointer; }
   border-radius: 999px;
   margin-top: 4px;
   border: 1px solid rgba(79, 140, 255, 0.25);
+}
+
+.cardio-tag {
+  background: rgba(245, 165, 36, 0.15);
+  color: var(--amber);
+  border-color: rgba(245, 165, 36, 0.3);
 }
 
 .history-item-details {
@@ -819,7 +900,8 @@ select { appearance: none; cursor: pointer; }
   .timer-btn-row { justify-content: center; }
   .topbar h1 { font-size: 1.05rem; }
   main { padding-left: max(14px, var(--safe-left)); padding-right: max(14px, var(--safe-right)); }
-  .tab-btn { padding: 10px 11px; font-size: 0.85rem; white-space: nowrap; }
+  .tab-btn { padding: 8px 12px; font-size: 0.66rem; }
+  .tab-icon { width: 17px; height: 17px; }
   .cardio-form-row { flex-direction: column; gap: 0; }
 }
 

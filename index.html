@@ -101,17 +101,70 @@
     </div>
   </div>
   <nav class="tabs">
-    <button class="tab-btn active" data-tab="workout">Workout</button>
-    <button class="tab-btn" data-tab="routines">Routines</button>
-    <button class="tab-btn" data-tab="cardio">Cardio</button>
-    <button class="tab-btn" data-tab="history">History</button>
+    <button class="tab-btn active" data-tab="home">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="tab-btn" data-tab="workout">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="7" y1="8" x2="7" y2="16"/><line x1="17" y1="8" x2="17" y2="16"/><line x1="2" y1="9.5" x2="2" y2="14.5"/><line x1="22" y1="9.5" x2="22" y2="14.5"/></svg>
+      <span>Workout</span>
+    </button>
+    <button class="tab-btn" data-tab="routines">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="13" y2="18"/></svg>
+      <span>Routines</span>
+    </button>
+    <button class="tab-btn" data-tab="cardio">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.6 2 5 5.5 5c2 0 3.3 1.1 4 2.2C10.2 6.1 11.5 5 13.5 5 17 5 18.5 8.6 22 11.7 14.5 16.4 12 21 12 21z"/></svg>
+      <span>Cardio</span>
+    </button>
+    <button class="tab-btn" data-tab="history">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      <span>History</span>
+    </button>
   </nav>
 </header>
 
 <main>
 
+  <!-- HOME TAB -->
+  <section id="tab-home" class="tab-panel active">
+    <div class="card home-greeting-card">
+      <h2 id="home-greeting">Good morning</h2>
+      <span class="muted" id="home-date"></span>
+    </div>
+
+    <div class="home-stats-row">
+      <div class="card home-stat-tile">
+        <div class="home-stat-value" id="home-strength-count">0</div>
+        <div class="home-stat-label">Workouts</div>
+      </div>
+      <div class="card home-stat-tile">
+        <div class="home-stat-value" id="home-cardio-count">0</div>
+        <div class="home-stat-label">Cardio</div>
+      </div>
+      <div class="card home-stat-tile">
+        <div class="home-stat-value" id="home-week-count">0</div>
+        <div class="home-stat-label">This week</div>
+      </div>
+    </div>
+
+    <div class="row home-quick-actions">
+      <button id="home-start-workout-btn" class="btn primary home-quick-btn">Start a Workout</button>
+      <button id="home-log-cardio-btn" class="btn ghost home-quick-btn">Log Cardio</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header-row">
+        <h2>Recent activity</h2>
+        <button id="home-view-history-btn" class="btn ghost small">View all →</button>
+      </div>
+      <div id="home-recent-list"></div>
+      <p id="home-recent-empty" class="muted hidden">Nothing logged yet — let's change that.</p>
+    </div>
+  </section>
+
   <!-- WORKOUT TAB -->
-  <section id="tab-workout" class="tab-panel active">
+  <section id="tab-workout" class="tab-panel">
 
     <div id="workout-picker" class="card">
       <h2>Start a workout</h2>
@@ -189,15 +242,9 @@
 
         <div class="row cardio-form-actions">
           <button id="cardio-log-btn" class="btn primary">Log Cardio</button>
-          <button id="cardio-cancel-edit-btn" class="btn ghost hidden">Cancel edit</button>
         </div>
+        <p class="muted cardio-history-note">Past sessions show up in the History tab.</p>
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Cardio history</h2>
-      <div id="cardio-list"></div>
-      <p id="no-cardio-msg" class="muted hidden">No cardio sessions logged yet.</p>
     </div>
   </section>
 
