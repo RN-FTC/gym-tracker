@@ -50,7 +50,7 @@
 <!-- SIGN-IN GATE -->
 <div id="signin-gate" class="hidden">
   <div class="loading-glow"></div>
-  <div class="loader-content">
+  <div class="loader-content signin-content">
     <div class="loader-mark">
       <svg viewBox="0 0 100 100" class="loader-bar-icon">
         <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
@@ -64,6 +64,7 @@
     </div>
     <div class="loader-title">Gym Tracker</div>
     <div class="loader-subtitle">Sign in to sync your workouts across devices</div>
+
     <button id="google-signin-btn" class="btn primary google-signin-btn">
       <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -73,7 +74,24 @@
       </svg>
       Sign in with Google
     </button>
+
+    <div class="signin-divider"><span>or</span></div>
+
+    <div class="signin-email-form">
+      <input type="text" id="signin-username-input" placeholder="Username" autocomplete="username" />
+      <input type="password" id="signin-password-input" placeholder="Password" autocomplete="current-password" />
+      <div class="row signin-email-actions">
+        <button id="signin-login-btn" class="btn ghost">Log In</button>
+        <button id="signin-signup-btn" class="btn ghost">Create Account</button>
+      </div>
+    </div>
+
     <p id="signin-error" class="signin-error hidden"></p>
+
+    <div class="signin-divider"><span>or</span></div>
+
+    <button id="guest-mode-btn" class="btn ghost guest-mode-btn">Continue as Guest</button>
+    <p class="muted signin-guest-note">Guest data stays on this device only — you can sign in anytime later to sync it.</p>
   </div>
 </div>
 
@@ -467,6 +485,19 @@
           <span class="settings-switch-knob"></span>
         </button>
       </div>
+
+      <label class="field-label settings-volume-label">Alert volume <span class="muted" id="timer-volume-value">70%</span></label>
+      <input type="range" id="timer-volume-input" min="0" max="100" step="5" value="70" />
+
+      <div class="row settings-toggle-row">
+        <div>
+          <div class="settings-toggle-label">Vibrate when rest ends</div>
+          <div class="muted">Supported on Android; iOS Safari doesn't allow websites to vibrate the phone.</div>
+        </div>
+        <button type="button" class="settings-switch active" id="timer-vibrate-toggle" role="switch" aria-checked="true" aria-label="Vibrate when rest ends">
+          <span class="settings-switch-knob"></span>
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -477,14 +508,20 @@
 
     <div class="card">
       <h2>Account</h2>
-      <div class="settings-account-row">
-        <img id="settings-account-avatar" class="account-avatar settings-account-avatar hidden" alt="" />
-        <div>
-          <div class="settings-account-name" id="settings-account-name">—</div>
-          <div class="muted" id="settings-account-email">—</div>
+      <div id="settings-account-signed-in">
+        <div class="settings-account-row">
+          <img id="settings-account-avatar" class="account-avatar settings-account-avatar hidden" alt="" />
+          <div>
+            <div class="settings-account-name" id="settings-account-name">—</div>
+            <div class="muted" id="settings-account-email">—</div>
+          </div>
         </div>
+        <button id="settings-signout-btn" class="btn danger-ghost">Sign out</button>
       </div>
-      <button id="settings-signout-btn" class="btn danger-ghost">Sign out</button>
+      <div id="settings-account-guest" class="hidden">
+        <p class="muted">You're using Guest Mode — everything you log stays on this device only. Sign in to sync it across devices and keep it backed up.</p>
+        <button id="settings-signin-btn" class="btn primary">Sign In / Create Account</button>
+      </div>
     </div>
   </section>
 

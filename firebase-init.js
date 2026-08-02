@@ -18,6 +18,9 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import {
   getFirestore,
@@ -34,6 +37,55 @@ const googleProvider = new GoogleAuthProvider();
 
 export function signInWithGoogle() {
   return signInWithPopup(auth, googleProvider);
+}
+
+// Firebase's email/password provider needs something shaped like an email, so
+// usernames are mapped to a synthetic address under a domain nobody sends
+// real mail to — never used for delivery, just as a unique identifier.
+// Firebase's own "email already in use" uniqueness check does double duty as
+// username-uniqueness enforcement here, so no extra Firestore bookkeeping
+// is needed.
+const USERNAME_DOMAIN = 'users.gymtracker.local';
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+function usernameToEmail(username) {
+  return `${username.trim().toLowerCase()}@${USERNAME_DOMAIN}`;
+}
+
+export async function signUpWithUsername(username, password) {
+  const clean = username.trim();
+  if (!USERNAME_RE.test(clean)) {
+    throw new Error('Username must be 3-20 characters: letters, numbers, underscores only.');
+  }
+  if (!password || password.length < 6) {
+    throw new Error('Password must be at least 6 characters.');
+  }
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, usernameToEmail(clean), password);
+    await updateProfile(cred.user, { displayName: clean });
+    return cred.user;
+  } catch (err) {
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error('That username is already taken.');
+    }
+    throw err;
+  }
+}
+
+export async function signInWithUsername(username, password) {
+  const clean = username.trim();
+  if (!clean || !password) {
+    throw new Error('Enter a username and password.');
+  }
+  try {
+    const cred = await signInWithEmailAndPassword(auth, usernameToEmail(clean), password);
+    return cred.user;
+  } catch (err) {
+    if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      throw new Error('Incorrect username or password.');
+    }
+    throw err;
+  }
 }
 
 export function signOut() {

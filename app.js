@@ -5,6 +5,8 @@ import {
   fetchUserDoc,
   writeUserDoc,
   watchUserDoc,
+  signUpWithUsername,
+  signInWithUsername,
 } from './firebase-init.js';
 import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
 
@@ -122,6 +124,8 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const LS_UNITS = 'gymtracker_units';
   const LS_DEFAULT_REST = 'gymtracker_default_rest';
   const LS_TIMER_SOUND = 'gymtracker_timer_sound';
+  const LS_TIMER_VOLUME = 'gymtracker_timer_volume';
+  const LS_TIMER_VIBRATE = 'gymtracker_timer_vibrate';
 
   const KG_PER_LB = 0.453592;
   const CM_PER_IN = 2.54;
@@ -133,12 +137,17 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   let unitsSystem = load(LS_UNITS, 'imperial');
   let defaultRestSeconds = load(LS_DEFAULT_REST, 90);
   let timerSoundEnabled = load(LS_TIMER_SOUND, true);
+  let timerVolume = load(LS_TIMER_VOLUME, 70);
+  let timerVibrateEnabled = load(LS_TIMER_VIBRATE, true);
 
   const unitsToggleEl = document.getElementById('units-toggle');
   const weightUnitLabel = document.getElementById('weight-unit-label');
   const heightImperialRow = document.getElementById('height-imperial-row');
   const defaultRestInput = document.getElementById('default-rest-input');
   const timerSoundToggle = document.getElementById('timer-sound-toggle');
+  const timerVolumeInput = document.getElementById('timer-volume-input');
+  const timerVolumeValue = document.getElementById('timer-volume-value');
+  const timerVibrateToggle = document.getElementById('timer-vibrate-toggle');
   const exportDataBtn = document.getElementById('export-data-btn');
 
   function applyUnitsUi(system) {
@@ -191,6 +200,26 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     setTimerSoundToggle(next);
   });
 
+  timerVolumeInput.value = timerVolume;
+  timerVolumeValue.textContent = timerVolume + '%';
+  timerVolumeInput.addEventListener('input', () => {
+    timerVolume = Number(timerVolumeInput.value);
+    timerVolumeValue.textContent = timerVolume + '%';
+    save(LS_TIMER_VOLUME, timerVolume);
+  });
+
+  function setTimerVibrateToggle(enabled) {
+    timerVibrateEnabled = enabled;
+    timerVibrateToggle.classList.toggle('active', enabled);
+    timerVibrateToggle.setAttribute('aria-checked', String(enabled));
+  }
+  setTimerVibrateToggle(timerVibrateEnabled);
+  timerVibrateToggle.addEventListener('click', () => {
+    const next = !timerVibrateEnabled;
+    save(LS_TIMER_VIBRATE, next);
+    setTimerVibrateToggle(next);
+  });
+
   exportDataBtn.addEventListener('click', () => {
     const exportPayload = {
       exportedAt: new Date().toISOString(),
@@ -236,6 +265,17 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const settingsAccountName = document.getElementById('settings-account-name');
   const settingsAccountEmail = document.getElementById('settings-account-email');
   const settingsSignoutBtn = document.getElementById('settings-signout-btn');
+  const settingsAccountSignedIn = document.getElementById('settings-account-signed-in');
+  const settingsAccountGuest = document.getElementById('settings-account-guest');
+  const settingsSigninBtn = document.getElementById('settings-signin-btn');
+  const signinUsernameInput = document.getElementById('signin-username-input');
+  const signinPasswordInput = document.getElementById('signin-password-input');
+  const signinLoginBtn = document.getElementById('signin-login-btn');
+  const signinSignupBtn = document.getElementById('signin-signup-btn');
+  const guestModeBtn = document.getElementById('guest-mode-btn');
+
+  const LS_GUEST = 'gymtracker_guest_mode';
+  let isGuestMode = load(LS_GUEST, false);
 
   let currentUser = null;
   let unsubscribeUserDoc = null;
@@ -414,7 +454,23 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       settingsAccountAvatar.classList.add('hidden');
     }
     settingsAccountName.textContent = user.displayName || 'Signed in';
-    settingsAccountEmail.textContent = user.email || '';
+    // Firebase email/password accounts use a synthetic @users.gymtracker.local
+    // address under the hood (see firebase-init.js) — showing that would be
+    // confusing, so just show the username there instead.
+    settingsAccountEmail.textContent = (user.email || '').endsWith('@users.gymtracker.local')
+      ? ''
+      : (user.email || '');
+  }
+
+  // Toggles the Settings tab's Account card between "signed in" and "guest" layouts.
+  function renderAccountSection() {
+    if (currentUser) {
+      settingsAccountSignedIn.classList.remove('hidden');
+      settingsAccountGuest.classList.add('hidden');
+    } else {
+      settingsAccountSignedIn.classList.add('hidden');
+      settingsAccountGuest.classList.remove('hidden');
+    }
   }
 
   googleSigninBtn.addEventListener('click', () => {
@@ -429,8 +485,52 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       .finally(() => { googleSigninBtn.disabled = false; });
   });
 
+  async function handleEmailAuthAction(action) {
+    signinErrorEl.classList.add('hidden');
+    const username = signinUsernameInput.value;
+    const password = signinPasswordInput.value;
+    signinLoginBtn.disabled = true;
+    signinSignupBtn.disabled = true;
+    try {
+      if (action === 'signup') {
+        await signUpWithUsername(username, password);
+      } else {
+        await signInWithUsername(username, password);
+      }
+      // watchAuthState below picks up the new session and runs handleSignedIn —
+      // same onboarding flow (name prompt/import/welcome) as Google sign-in.
+    } catch (err) {
+      console.error('Email auth failed', err);
+      signinErrorEl.textContent = err.message || 'Something went wrong.';
+      signinErrorEl.classList.remove('hidden');
+    } finally {
+      signinLoginBtn.disabled = false;
+      signinSignupBtn.disabled = false;
+    }
+  }
+  signinLoginBtn.addEventListener('click', () => handleEmailAuthAction('login'));
+  signinSignupBtn.addEventListener('click', () => handleEmailAuthAction('signup'));
+
+  function exitGuestMode() {
+    isGuestMode = false;
+    save(LS_GUEST, false);
+    showSigninGate();
+  }
+
+  guestModeBtn.addEventListener('click', () => {
+    isGuestMode = true;
+    save(LS_GUEST, true);
+    handleGuestMode();
+  });
+
+  settingsSigninBtn.addEventListener('click', exitGuestMode);
+
   signOutBtn.addEventListener('click', () => {
-    signOut().catch(err => console.error('Sign-out failed', err));
+    if (isGuestMode) {
+      exitGuestMode();
+    } else {
+      signOut().catch(err => console.error('Sign-out failed', err));
+    }
   });
 
   settingsSignoutBtn.addEventListener('click', () => {
@@ -455,6 +555,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   async function handleSignedIn(user) {
     currentUser = user;
     renderAccountBadge(user);
+    renderAccountSection();
     showAppShell();
 
     let isNewAccount = false;
@@ -502,9 +603,33 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     maybeHideLoadingScreen();
   }
 
+  // Guest mode: fully local, no Firestore involved at all — mirrors
+  // handleSignedIn's onboarding (name prompt + welcome screen) but skips the
+  // account fetch/sync/import steps entirely, since there's no cloud account.
+  async function handleGuestMode() {
+    currentUser = null;
+    if (unsubscribeUserDoc) { unsubscribeUserDoc(); unsubscribeUserDoc = null; }
+    renderAccountSection();
+    showAppShell();
+    authResolved = true;
+    maybeHideLoadingScreen();
+
+    if (!preferredName) {
+      await promptForName({ displayName: '' });
+    }
+    showWelcomeScreen();
+  }
+
   watchAuthState(user => {
-    if (user) handleSignedIn(user);
-    else handleSignedOut();
+    if (user) {
+      isGuestMode = false;
+      save(LS_GUEST, false);
+      handleSignedIn(user);
+    } else if (isGuestMode) {
+      handleGuestMode();
+    } else {
+      handleSignedOut();
+    }
   });
 
   /* ---------------------------------------------------------------------
@@ -2000,13 +2125,16 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioCtx();
+      // 0-100 slider maps to a peak gain of roughly 0.12-0.95 — noticeably
+      // louder ceiling than a fixed beep, while staying just under clipping.
+      const peakGain = 0.12 + (timerVolume / 100) * 0.83;
       const beepOnce = (startTime) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
         osc.frequency.value = 880;
         gain.gain.setValueAtTime(0.0001, startTime);
-        gain.gain.exponentialRampToValueAtTime(0.3, startTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(peakGain, startTime + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.28);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -2014,12 +2142,20 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
         osc.stop(startTime + 0.3);
       };
       const now = ctx.currentTime;
-      beepOnce(now);
-      beepOnce(now + 0.4);
-      beepOnce(now + 0.8);
-      setTimeout(() => ctx.close(), 1500);
+      // Higher volumes also get an extra couple of beeps — louder AND more
+      // insistent, closer to an actual alarm rather than a gentle chime.
+      const repeatCount = timerVolume >= 60 ? 5 : 3;
+      for (let i = 0; i < repeatCount; i++) beepOnce(now + i * 0.4);
+      setTimeout(() => ctx.close(), repeatCount * 400 + 500);
     } catch (e) {
       console.warn('Audio alert unavailable', e);
+    }
+  }
+
+  function vibrateAlert() {
+    if (!timerVibrateEnabled) return;
+    if (navigator.vibrate) {
+      navigator.vibrate([250, 100, 250, 100, 250]);
     }
   }
 
@@ -2033,6 +2169,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     timerStartBtn.classList.remove('hidden');
     timerPauseBtn.classList.add('hidden');
     playBeep();
+    vibrateAlert();
     restTimerEl.classList.add('alerting');
     restTimerEl.classList.remove('collapsed'); // impossible to miss when rest is actually over
     renderTimer();

@@ -198,21 +198,63 @@ h2 { font-size: 1.05rem; }
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse 800px 600px at 50% 30%, var(--splash-bg-1), var(--splash-bg-2) 70%);
-  overflow: hidden;
+  overflow-y: auto;
   padding: 24px;
 }
 
 #signin-gate .loader-mark { animation: none; }
 
+.signin-content {
+  width: 100%;
+  max-width: 320px;
+  padding: calc(24px + var(--safe-top)) 0 calc(24px + var(--safe-bottom)) 0;
+}
+
 .google-signin-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   background: #ffffff;
   color: #1f2430;
   margin-top: 10px;
+  width: 100%;
 }
 .google-signin-btn:hover { background: #f1f4fb; }
+
+.signin-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin: 4px 0;
+}
+.signin-divider::before,
+.signin-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+
+.signin-email-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signin-email-actions .btn { flex: 1; }
+
+.guest-mode-btn { width: 100%; }
+
+.signin-guest-note {
+  text-align: center;
+  font-size: 0.75rem;
+  margin: 0;
+}
 
 .signin-error {
   color: var(--danger);
@@ -1215,6 +1257,37 @@ select { appearance: none; cursor: pointer; }
 .settings-switch.active .settings-switch-knob {
   transform: translateX(20px);
   background: var(--accent-text);
+}
+
+.settings-volume-label { margin-top: 18px; }
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 6px 0 4px 0;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--accent-text);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--accent-text);
+  cursor: pointer;
 }
 
 @media (max-width: 480px) {
