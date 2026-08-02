@@ -115,6 +115,104 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   applyTheme(currentThemeChoice);
 
   /* ---------------------------------------------------------------------
+     MORE SETTINGS — units, rest timer defaults/sound, data export.
+     All device-local (not synced to Firestore) except units conversion,
+     which only affects how bodyStats is entered/displayed.
+  --------------------------------------------------------------------- */
+  const LS_UNITS = 'gymtracker_units';
+  const LS_DEFAULT_REST = 'gymtracker_default_rest';
+  const LS_TIMER_SOUND = 'gymtracker_timer_sound';
+
+  const KG_PER_LB = 0.453592;
+  const CM_PER_IN = 2.54;
+  const lbToKg = lb => lb * KG_PER_LB;
+  const kgToLb = kg => kg / KG_PER_LB;
+  const cmToInches = cm => cm / CM_PER_IN;
+  const inchesToCm = inches => inches * CM_PER_IN;
+
+  let unitsSystem = load(LS_UNITS, 'imperial');
+  let defaultRestSeconds = load(LS_DEFAULT_REST, 90);
+  let timerSoundEnabled = load(LS_TIMER_SOUND, true);
+
+  const unitsToggleEl = document.getElementById('units-toggle');
+  const weightUnitLabel = document.getElementById('weight-unit-label');
+  const heightImperialRow = document.getElementById('height-imperial-row');
+  const defaultRestInput = document.getElementById('default-rest-input');
+  const timerSoundToggle = document.getElementById('timer-sound-toggle');
+  const exportDataBtn = document.getElementById('export-data-btn');
+
+  function applyUnitsUi(system) {
+    unitsSystem = system;
+    unitsToggleEl.querySelectorAll('.units-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.units === system);
+    });
+    if (system === 'metric') {
+      weightUnitLabel.textContent = '(kg)';
+      heightImperialRow.classList.add('hidden');
+      heightCmInput.classList.remove('hidden');
+    } else {
+      weightUnitLabel.textContent = '(lbs)';
+      heightImperialRow.classList.remove('hidden');
+      heightCmInput.classList.add('hidden');
+    }
+  }
+
+  unitsToggleEl.addEventListener('click', e => {
+    const chip = e.target.closest('.units-chip');
+    if (!chip) return;
+    save(LS_UNITS, chip.dataset.units);
+    applyUnitsUi(chip.dataset.units);
+    if (bodyStats) populateWeightForm(bodyStats); // re-render existing numbers in the newly chosen units
+  });
+
+  defaultRestInput.value = defaultRestSeconds;
+  defaultRestInput.addEventListener('change', () => {
+    const secs = Math.max(5, parseInt(defaultRestInput.value, 10) || 90);
+    defaultRestSeconds = secs;
+    defaultRestInput.value = secs;
+    save(LS_DEFAULT_REST, secs);
+    if (!timerRunning) {
+      timerTotalSeconds = secs;
+      timerRemaining = secs;
+      timerSecondsInput.value = secs;
+      renderTimer();
+    }
+  });
+
+  function setTimerSoundToggle(enabled) {
+    timerSoundEnabled = enabled;
+    timerSoundToggle.classList.toggle('active', enabled);
+    timerSoundToggle.setAttribute('aria-checked', String(enabled));
+  }
+  setTimerSoundToggle(timerSoundEnabled);
+  timerSoundToggle.addEventListener('click', () => {
+    const next = !timerSoundEnabled;
+    save(LS_TIMER_SOUND, next);
+    setTimerSoundToggle(next);
+  });
+
+  exportDataBtn.addEventListener('click', () => {
+    const exportPayload = {
+      exportedAt: new Date().toISOString(),
+      preferredName,
+      bodyStats,
+      routines,
+      history,
+      cardioLog,
+      foodLog,
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gym-tracker-export-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  /* ---------------------------------------------------------------------
      AUTH & CLOUD SYNC
   --------------------------------------------------------------------- */
   const signinGate = document.getElementById('signin-gate');
@@ -215,7 +313,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     renderHistoryList();
     renderActiveWorkout();
     renderHome();
-    renderWeightTab();
+    renderBmiTab();
   }
 
   function showImportModal() { importModal.classList.remove('hidden'); }
@@ -249,7 +347,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     renderHistoryList();
     renderActiveWorkout();
     renderHome();
-    renderWeightTab();
+    renderBmiTab();
     closeImportModal();
     if (importResolve) { importResolve(); importResolve = null; }
   });
@@ -898,14 +996,17 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   });
 
   /* ---------------------------------------------------------------------
-     WEIGHT TAB — BMI + estimated daily nutrition targets.
-     General-purpose estimates (Mifflin-St Jeor for BMR, standard adult BMI
-     bands) — not medical advice, and the copy is written to stay gentle
-     regardless of where someone's numbers land.
+     BMI TAB — stats form + BMI. General-purpose estimates (Mifflin-St Jeor
+     for BMR, standard adult BMI bands) — not medical advice. The messaging
+     is body-positive throughout, but stays graduated and realistic: a mild
+     deviation gets a gentle nudge, a genuinely dangerous BMI (very
+     underweight or very overweight) says so plainly and points to a doctor,
+     rather than undersizing a real health risk with soft language.
   --------------------------------------------------------------------- */
   const weightInput = document.getElementById('weight-input');
   const heightFtInput = document.getElementById('height-ft-input');
   const heightInInput = document.getElementById('height-in-input');
+  const heightCmInput = document.getElementById('height-cm-input');
   const ageInput = document.getElementById('age-input');
   const sexToggleEl = document.getElementById('sex-toggle');
   const activitySelect = document.getElementById('activity-select');
@@ -914,10 +1015,19 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const weightBmiValueEl = document.getElementById('weight-bmi-value');
   const weightBmiTagEl = document.getElementById('weight-bmi-tag');
   const weightBmiNoteEl = document.getElementById('weight-bmi-note');
+  const weightExtremeNoteEl = document.getElementById('weight-extreme-note');
   const weightCaloriesValueEl = document.getElementById('weight-calories-value');
   const weightProteinValueEl = document.getElementById('weight-protein-value');
   const weightCarbsValueEl = document.getElementById('weight-carbs-value');
   const weightFatValueEl = document.getElementById('weight-fat-value');
+  const bmiViewFoodBtn = document.getElementById('bmi-view-food-btn');
+  const foodGoBmiBtn = document.getElementById('food-go-bmi-btn');
+  const foodNoBmiCard = document.getElementById('food-no-bmi-card');
+  const foodTabContent = document.getElementById('food-tab-content');
+
+  bmiViewFoodBtn.addEventListener('click', () => switchTab('food'));
+  foodGoBmiBtn.addEventListener('click', () => switchTab('bmi'));
+  applyUnitsUi(unitsSystem);
 
   const ACTIVITY_MULTIPLIERS = {
     sedentary: 1.2,
@@ -928,6 +1038,12 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   };
 
   const BMI_BANDS = [
+    {
+      max: 16,
+      label: 'Significantly underweight',
+      tone: 'cardio-tag',
+      note: "Your BMI is significantly below the typical healthy range, which can come with real health risks. Please consider talking to a doctor soon — the targets below are a gentle starting point to help you build back up, not a substitute for medical care.",
+    },
     {
       max: 18.5,
       label: 'Underweight',
@@ -947,10 +1063,16 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       note: "You're a bit above the typical healthy range. Small, steady changes go a long way — the targets below favor a gentle deficit while keeping your strength.",
     },
     {
-      max: Infinity,
+      max: 40,
       label: 'Well above healthy range',
       tone: 'cardio-tag',
       note: 'These targets aim for gradual, sustainable progress while preserving your strength — consistency matters far more than speed here.',
+    },
+    {
+      max: Infinity,
+      label: 'Significantly above healthy range',
+      tone: 'cardio-tag',
+      note: "Your BMI is significantly above the typical healthy range, which can come with real health risks. Please consider talking to a doctor — the targets below are a gentle, gradual starting point, not a substitute for medical care.",
     },
   ];
 
@@ -1001,9 +1123,15 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   });
 
   function populateWeightForm(stats) {
-    weightInput.value = stats.weightLb ?? '';
-    heightFtInput.value = stats.heightFt ?? '';
-    heightInInput.value = stats.heightIn ?? '';
+    const totalInches = (stats.heightFt ?? 0) * 12 + (stats.heightIn ?? 0);
+    if (unitsSystem === 'metric') {
+      weightInput.value = stats.weightLb != null ? Math.round(lbToKg(stats.weightLb) * 10) / 10 : '';
+      heightCmInput.value = totalInches ? Math.round(inchesToCm(totalInches)) : '';
+    } else {
+      weightInput.value = stats.weightLb ?? '';
+      heightFtInput.value = stats.heightFt ?? '';
+      heightInInput.value = stats.heightIn ?? '';
+    }
     ageInput.value = stats.age ?? '';
     activitySelect.value = stats.activityLevel || 'moderate';
     sexToggleEl.querySelectorAll('.sex-chip').forEach(c => {
@@ -1011,9 +1139,9 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     });
   }
 
-  let lastNutritionResult = null; // goal macros from the most recent calculation, used by the food log below
+  let lastNutritionResult = null; // goal macros from the most recent calculation, read by the Food tab
 
-  function renderWeightResults(stats) {
+  function renderBmiResults(stats) {
     const result = calcNutrition(stats);
     lastNutritionResult = result;
     weightResultsEl.classList.remove('hidden');
@@ -1021,39 +1149,50 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     weightBmiTagEl.textContent = result.category.label;
     weightBmiTagEl.className = 'routine-tag' + (result.category.tone ? ' ' + result.category.tone : '');
     weightBmiNoteEl.textContent = result.category.note;
-    weightCaloriesValueEl.textContent = result.calorieTarget;
-    weightProteinValueEl.textContent = result.proteinG;
-    weightCarbsValueEl.textContent = result.carbG;
-    weightFatValueEl.textContent = result.fatG;
-    renderFoodLog();
+    // BMI this extreme is almost always a typo rather than a real measurement —
+    // flag it plainly instead of confidently acting on it.
+    weightExtremeNoteEl.textContent = (result.bmi < 10 || result.bmi > 70)
+      ? 'These numbers produce an unusual BMI — double-check your height and weight for typos.'
+      : '';
   }
 
-  function renderWeightTab() {
+  function renderBmiTab() {
     if (!bodyStats) {
       weightResultsEl.classList.add('hidden');
+      renderFoodTab();
       return;
     }
     populateWeightForm(bodyStats);
-    renderWeightResults(bodyStats);
+    renderBmiResults(bodyStats);
+    renderFoodTab();
   }
 
   weightCalcBtn.addEventListener('click', () => {
-    const weightLb = parseFloat(weightInput.value);
-    const heightFt = parseFloat(heightFtInput.value) || 0;
-    const heightIn = parseFloat(heightInInput.value) || 0;
+    const enteredWeight = parseFloat(weightInput.value);
     const age = parseInt(ageInput.value, 10);
     const sexChip = sexToggleEl.querySelector('.sex-chip.active');
     const sex = sexChip ? sexChip.dataset.sex : 'male';
     const activityLevel = activitySelect.value;
 
-    if (!weightLb || weightLb <= 0) {
-      alert('Enter your weight in pounds.');
+    let heightFt, heightIn;
+    if (unitsSystem === 'metric') {
+      const cm = parseFloat(heightCmInput.value) || 0;
+      const totalInches = cmToInches(cm);
+      heightFt = Math.floor(totalInches / 12);
+      heightIn = Math.round((totalInches % 12) * 10) / 10;
+    } else {
+      heightFt = parseFloat(heightFtInput.value) || 0;
+      heightIn = parseFloat(heightInInput.value) || 0;
+    }
+
+    if (!enteredWeight || enteredWeight <= 0) {
+      alert(`Enter your weight in ${unitsSystem === 'metric' ? 'kilograms' : 'pounds'}.`);
       weightInput.focus();
       return;
     }
     if (heightFt <= 0 && heightIn <= 0) {
       alert('Enter your height.');
-      heightFtInput.focus();
+      (unitsSystem === 'metric' ? heightCmInput : heightFtInput).focus();
       return;
     }
     if (!age || age <= 0) {
@@ -1062,15 +1201,37 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       return;
     }
 
+    const weightLb = unitsSystem === 'metric' ? kgToLb(enteredWeight) : enteredWeight;
+
     bodyStats = { weightLb, heightFt, heightIn, age, sex, activityLevel };
     persistLocal();
     schedulePush();
-    renderWeightResults(bodyStats);
+    renderBmiResults(bodyStats);
+    renderFoodTab();
   });
 
   /* ---------------------------------------------------------------------
-     FOOD LOG — lives inside the Weight tab, tracked against the goal
-     macros computed above. AI estimate/photo-scan buttons are wired up
+     FOOD TAB — daily targets (derived from the BMI tab's calculation) +
+     the food log below.
+  --------------------------------------------------------------------- */
+  function renderFoodTab() {
+    if (!bodyStats || !lastNutritionResult) {
+      foodNoBmiCard.classList.remove('hidden');
+      foodTabContent.classList.add('hidden');
+      return;
+    }
+    foodNoBmiCard.classList.add('hidden');
+    foodTabContent.classList.remove('hidden');
+    weightCaloriesValueEl.textContent = lastNutritionResult.calorieTarget;
+    weightProteinValueEl.textContent = lastNutritionResult.proteinG;
+    weightCarbsValueEl.textContent = lastNutritionResult.carbG;
+    weightFatValueEl.textContent = lastNutritionResult.fatG;
+    renderFoodLog();
+  }
+
+  /* ---------------------------------------------------------------------
+     FOOD LOG — lives inside the Food tab, tracked against the goal macros
+     computed on the BMI tab. AI estimate/photo-scan buttons are wired up
      but disabled until a secure backend proxy exists (see README/worker/).
   --------------------------------------------------------------------- */
   const foodDescriptionInput = document.getElementById('food-description-input');
@@ -1770,6 +1931,11 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const timerPresetsEl = document.getElementById('timer-presets');
   const timerMinus15Btn = document.getElementById('timer-minus15-btn');
   const timerPlus15Btn = document.getElementById('timer-plus15-btn');
+  const timerRingWrapBtn = document.getElementById('timer-ring-wrap');
+
+  timerRingWrapBtn.addEventListener('click', () => {
+    restTimerEl.classList.toggle('collapsed');
+  });
 
   const RING_RADIUS = 52;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -1830,6 +1996,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   }
 
   function playBeep() {
+    if (!timerSoundEnabled) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioCtx();
@@ -1867,6 +2034,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     timerPauseBtn.classList.add('hidden');
     playBeep();
     restTimerEl.classList.add('alerting');
+    restTimerEl.classList.remove('collapsed'); // impossible to miss when rest is actually over
     renderTimer();
     persistTimerState();
     let flip = false;
@@ -1896,7 +2064,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     stopAlerting();
     const remaining = getRemainingSeconds();
     if (remaining <= 0) {
-      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || defaultRestSeconds);
       timerRemaining = timerTotalSeconds;
     } else {
       timerRemaining = remaining;
@@ -1927,7 +2095,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     timerEndAt = null;
     timerIntervalId && clearInterval(timerIntervalId);
     timerIntervalId = null;
-    timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+    timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || defaultRestSeconds);
     timerRemaining = timerTotalSeconds;
     timerStartBtn.textContent = 'Start';
     timerStartBtn.classList.remove('hidden');
@@ -1942,7 +2110,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   timerResetBtn.addEventListener('click', resetTimer);
   timerSecondsInput.addEventListener('change', () => {
     if (!timerRunning) {
-      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || 90);
+      timerTotalSeconds = Math.max(5, parseInt(timerSecondsInput.value, 10) || defaultRestSeconds);
       timerRemaining = timerTotalSeconds;
       timerStartBtn.textContent = 'Start';
       persistTimerState();
@@ -2004,10 +2172,13 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   function restoreTimerState() {
     const saved = load(LS_TIMER, null);
     if (!saved) {
+      timerTotalSeconds = defaultRestSeconds;
+      timerRemaining = defaultRestSeconds;
+      timerSecondsInput.value = defaultRestSeconds;
       renderTimer();
       return;
     }
-    timerTotalSeconds = saved.timerTotalSeconds || 90;
+    timerTotalSeconds = saved.timerTotalSeconds || defaultRestSeconds;
     timerSecondsInput.value = timerTotalSeconds;
 
     if (saved.timerRunning && saved.timerEndAt) {
@@ -2039,7 +2210,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   renderHistoryList();
   renderActiveWorkout();
   renderHome();
-  renderWeightTab();
+  renderBmiTab();
   restoreTimerState();
 })();
 

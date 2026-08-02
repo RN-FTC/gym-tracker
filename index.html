@@ -117,9 +117,13 @@
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9.3C.5 8.6 2 5 5.5 5c2 0 3.3 1.1 4 2.2C10.2 6.1 11.5 5 13.5 5 17 5 18.5 8.6 22 11.7 14.5 16.4 12 21 12 21z"/></svg>
       <span>Cardio</span>
     </button>
-    <button class="tab-btn" data-tab="weight">
+    <button class="tab-btn" data-tab="bmi">
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="2"/><circle cx="12" cy="14.5" r="2.1"/><path d="M9 9c0-2 1.3-4 3-4s3 2 3 4"/></svg>
-      <span>Weight</span>
+      <span>BMI</span>
+    </button>
+    <button class="tab-btn" data-tab="food">
+      <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="7"/><path d="M12 7V4"/><path d="M9.5 4.5c1-1.5 3-1.5 4 0"/></svg>
+      <span>Food</span>
     </button>
     <button class="tab-btn" data-tab="history">
       <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
@@ -256,17 +260,17 @@
     </div>
   </section>
 
-  <!-- WEIGHT TAB -->
-  <section id="tab-weight" class="tab-panel">
+  <!-- BMI TAB -->
+  <section id="tab-bmi" class="tab-panel">
     <div class="card">
       <h2>Your stats</h2>
       <p class="muted">Used to estimate your BMI and a daily nutrition target. Not medical advice.</p>
 
-      <label class="field-label">Weight <span class="muted">(lbs)</span></label>
+      <label class="field-label">Weight <span class="muted" id="weight-unit-label">(lbs)</span></label>
       <input type="number" id="weight-input" min="0" step="any" placeholder="e.g. 165" />
 
       <label class="field-label">Height</label>
-      <div class="cardio-form-row">
+      <div class="cardio-form-row" id="height-imperial-row">
         <div class="cardio-field">
           <input type="number" id="height-ft-input" min="0" step="1" placeholder="Feet" />
         </div>
@@ -274,6 +278,7 @@
           <input type="number" id="height-in-input" min="0" max="11" step="1" placeholder="Inches" />
         </div>
       </div>
+      <input type="number" id="height-cm-input" min="0" step="any" placeholder="e.g. 178" class="hidden" />
 
       <label class="field-label">Age</label>
       <input type="number" id="age-input" min="1" step="1" placeholder="e.g. 28" />
@@ -306,8 +311,30 @@
         </div>
         <div class="weight-bmi-value" id="weight-bmi-value">—</div>
         <p class="muted" id="weight-bmi-note"></p>
+        <p class="muted weight-disclaimer" id="weight-extreme-note"></p>
       </div>
 
+      <div class="card">
+        <div class="card-header-row">
+          <h2>Nutrition targets</h2>
+          <button id="bmi-view-food-btn" class="btn ghost small">Go to Food →</button>
+        </div>
+        <p class="muted">Your daily calorie and macro targets are ready — track them against what you eat in the Food tab.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOD TAB -->
+  <section id="tab-food" class="tab-panel">
+    <div id="food-no-bmi-card" class="card hidden">
+      <h2>Calculate your BMI first</h2>
+      <p class="muted">Your daily calorie and macro targets come from your BMI stats — head to the BMI tab and hit Calculate to unlock food tracking here.</p>
+      <div class="row weight-calc-row">
+        <button id="food-go-bmi-btn" class="btn primary">Go to BMI →</button>
+      </div>
+    </div>
+
+    <div id="food-tab-content" class="hidden">
       <div class="card">
         <h2>Daily targets</h2>
         <p class="muted">Estimated to help you reach a healthy weight while supporting muscle growth.</p>
@@ -418,6 +445,37 @@
     </div>
 
     <div class="card">
+      <h2>Units</h2>
+      <p class="muted">Used for weight and height on the BMI tab.</p>
+      <div class="row units-toggle" id="units-toggle">
+        <button type="button" class="preset-chip units-chip active" data-units="imperial">Imperial (lb, ft/in)</button>
+        <button type="button" class="preset-chip units-chip" data-units="metric">Metric (kg, cm)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Rest timer</h2>
+      <label class="field-label">Default duration <span class="muted">(seconds)</span></label>
+      <input type="number" id="default-rest-input" min="5" step="5" value="90" />
+
+      <div class="row settings-toggle-row">
+        <div>
+          <div class="settings-toggle-label">Play sound when rest ends</div>
+          <div class="muted">Turn off to rely on the visual pulse and vibration only.</div>
+        </div>
+        <button type="button" class="settings-switch active" id="timer-sound-toggle" role="switch" aria-checked="true" aria-label="Play sound when rest ends">
+          <span class="settings-switch-knob"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Your data</h2>
+      <p class="muted">Download everything you've logged as a JSON file — handy for backup or moving it elsewhere.</p>
+      <button id="export-data-btn" class="btn ghost">⬇ Export data</button>
+    </div>
+
+    <div class="card">
       <h2>Account</h2>
       <div class="settings-account-row">
         <img id="settings-account-avatar" class="account-avatar settings-account-avatar hidden" alt="" />
@@ -432,9 +490,9 @@
 
 </main>
 
-<!-- REST TIMER WIDGET -->
-<div id="rest-timer" class="rest-timer">
-  <div class="timer-ring-wrap" id="timer-ring-wrap">
+<!-- REST TIMER WIDGET — floats as a small pill; tap the ring to expand/collapse -->
+<div id="rest-timer" class="rest-timer collapsed">
+  <button type="button" class="timer-ring-wrap" id="timer-ring-wrap" aria-label="Toggle rest timer controls">
     <svg class="timer-ring" viewBox="0 0 120 120">
       <circle class="timer-ring-bg" cx="60" cy="60" r="52" />
       <circle class="timer-ring-progress" id="timer-ring-progress" cx="60" cy="60" r="52" />
@@ -443,9 +501,9 @@
       <div class="rest-timer-display" id="timer-display">01:30</div>
       <div class="timer-ring-sub">REST</div>
     </div>
-  </div>
+  </button>
 
-  <div class="rest-timer-controls">
+  <div class="rest-timer-controls" id="rest-timer-controls">
     <div class="timer-presets" id="timer-presets">
       <button type="button" class="preset-chip" data-secs="30">30</button>
       <button type="button" class="preset-chip" data-secs="60">60</button>

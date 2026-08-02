@@ -153,7 +153,7 @@ body {
     radial-gradient(ellipse 700px 500px at 100% 10%, var(--body-glow-2), transparent 55%),
     var(--bg);
   background-attachment: fixed;
-  padding-bottom: calc(200px + var(--safe-bottom));
+  padding-bottom: calc(110px + var(--safe-bottom));
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
@@ -914,25 +914,14 @@ select { appearance: none; cursor: pointer; }
 --------------------------------------------------------------------- */
 .rest-timer {
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(var(--blur-bg-rgb), 0.85);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  border-top: 1px solid var(--border-soft);
-  padding: 14px 16px calc(14px + var(--safe-bottom)) 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  right: 16px;
+  bottom: calc(16px + var(--safe-bottom));
   z-index: 20;
-  transition: box-shadow 0.3s ease;
-}
-
-.rest-timer.alerting {
-  box-shadow: 0 -6px 30px rgba(var(--danger-rgb), 0.45);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
 }
 
 .timer-ring-wrap {
@@ -940,12 +929,39 @@ select { appearance: none; cursor: pointer; }
   width: 96px;
   height: 96px;
   flex-shrink: 0;
+  background: rgba(var(--blur-bg-rgb), 0.92);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: var(--shadow-glow);
+  transition: width 0.25s ease, height 0.25s ease, box-shadow 0.3s ease;
+}
+
+.rest-timer.collapsed .timer-ring-wrap {
+  width: 60px;
+  height: 60px;
+}
+
+.rest-timer.collapsed .timer-ring-sub {
+  display: none;
+}
+
+.rest-timer.collapsed .rest-timer-display {
+  font-size: 0.92rem;
+}
+
+.rest-timer.alerting .timer-ring-wrap {
+  box-shadow: 0 0 0 4px rgba(var(--danger-rgb), 0.35), var(--shadow-glow);
 }
 
 .timer-ring {
-  width: 96px;
-  height: 96px;
+  width: 100%;
+  height: 100%;
   transform: rotate(-90deg);
+  display: block;
 }
 
 .timer-ring-bg {
@@ -1022,14 +1038,28 @@ select { appearance: none; cursor: pointer; }
 }
 
 .rest-timer-controls {
-  display: flex;
+  display: none;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  background: rgba(var(--blur-bg-rgb), 0.97);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow-glow);
+  width: 280px;
+  max-width: calc(100vw - 32px);
+}
+
+.rest-timer:not(.collapsed) .rest-timer-controls {
+  display: flex;
 }
 
 .timer-presets {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .preset-chip {
@@ -1137,15 +1167,62 @@ select { appearance: none; cursor: pointer; }
   font-size: 0.95rem;
 }
 
+.units-toggle { margin-top: 10px; }
+.units-chip { flex: 1; text-align: center; }
+
+.settings-toggle-row {
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  gap: 14px;
+}
+
+.settings-toggle-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+}
+
+.settings-switch {
+  flex-shrink: 0;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.settings-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.settings-switch.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-switch.active .settings-switch-knob {
+  transform: translateX(20px);
+  background: var(--accent-text);
+}
+
 @media (max-width: 480px) {
   .active-header { flex-direction: column; }
   .active-header .btn { width: 100%; }
-  .rest-timer { justify-content: center; padding-top: 12px; gap: 14px; }
-  .timer-ring-wrap { width: 76px; height: 76px; }
-  .timer-ring { width: 76px; height: 76px; }
-  .rest-timer-display { font-size: 1.15rem; }
+  .rest-timer { right: 12px; bottom: calc(12px + var(--safe-bottom)); }
+  .rest-timer-controls { width: calc(100vw - 24px); }
   .timer-nudge-btn { min-width: 38px; padding: 8px 6px; }
-  .timer-btn-row { justify-content: center; }
   .topbar h1 { font-size: 1.05rem; }
   main { padding-left: max(14px, var(--safe-left)); padding-right: max(14px, var(--safe-right)); }
   .tab-btn { padding: 8px 12px; font-size: 0.66rem; }
@@ -1155,5 +1232,5 @@ select { appearance: none; cursor: pointer; }
 }
 
 @supports (-webkit-touch-callout: none) {
-  body { padding-bottom: calc(220px + var(--safe-bottom)); }
+  body { padding-bottom: calc(130px + var(--safe-bottom)); }
 }
