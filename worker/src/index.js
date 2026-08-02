@@ -68,7 +68,18 @@ export default {
         type: 'image',
         source: { type: 'base64', media_type: body.mimeType || 'image/jpeg', data: body.imageBase64 },
       });
-      content.push({ type: 'text', text: 'Estimate the nutrition facts for the food shown in this photo. Use the estimate_macros tool.' });
+      const noteText = body.description && typeof body.description === 'string' && body.description.trim()
+        ? `The user says this is: "${body.description.trim()}". Trust this over your own guess when identifying what the food is (e.g. if it looks like it could be one of two similar foods, go with what the user said) — but still judge the quantity/portion size yourself from the photo, not from the text.`
+        : '';
+      content.push({
+        type: 'text',
+        text: [
+          'Estimate the nutrition facts for the food shown in this photo.',
+          noteText,
+          'Look carefully at the actual quantity/portion size visible in the photo — plate or bowl size relative to the food, stack height, number of pieces, thickness of slices, any visible reference objects (utensils, hands, packaging) — and scale calories and macros to match that portion, not a generic single-serving default.',
+          'Use the estimate_macros tool.',
+        ].filter(Boolean).join(' '),
+      });
     } else if (body.description && typeof body.description === 'string') {
       content.push({ type: 'text', text: `Estimate the nutrition facts for: "${body.description}". Use the estimate_macros tool.` });
     } else {

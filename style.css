@@ -829,6 +829,12 @@ select { appearance: none; cursor: pointer; }
 
 .food-progress-bar-fill.over { background: linear-gradient(90deg, var(--danger), var(--danger-hover)); }
 
+.food-desc-hint {
+  margin-top: 6px;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+}
+
 .food-ai-row { margin-top: 14px; }
 .food-ai-row .btn { flex: 1; }
 

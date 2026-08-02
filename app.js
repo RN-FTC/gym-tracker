@@ -1551,6 +1551,12 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   foodPhotoInput.addEventListener('change', async () => {
     const file = foodPhotoInput.files && foodPhotoInput.files[0];
     if (!file) return;
+    // Whatever the user typed here before picking a photo is a clarifying
+    // note (e.g. "french toast with berries, not chocolate cake") — send it
+    // along with the image, and don't let the AI's own guessed label
+    // clobber it afterward (fillFoodFieldsFromEstimate already only fills
+    // the description when it's empty).
+    const userNote = foodDescriptionInput.value.trim();
     const originalLabel = foodPhotoBtn.textContent;
     foodPhotoBtn.disabled = true;
     foodPhotoBtn.textContent = 'Scanning…';
@@ -1563,8 +1569,9 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const estimate = await callAiEstimate({ imageBase64, mimeType: file.type || 'image/jpeg' });
-      foodDescriptionInput.value = estimate.label || foodDescriptionInput.value;
+      const payload = { imageBase64, mimeType: file.type || 'image/jpeg' };
+      if (userNote) payload.description = userNote;
+      const estimate = await callAiEstimate(payload);
       fillFoodFieldsFromEstimate(estimate);
       foodAiNote.textContent = 'Estimate filled in below — double check before adding.';
     } catch (err) {
@@ -2058,8 +2065,27 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const timerPlus15Btn = document.getElementById('timer-plus15-btn');
   const timerRingWrapBtn = document.getElementById('timer-ring-wrap');
 
+  // iOS Safari mutes any AudioContext that wasn't created/resumed inside a
+  // direct user-gesture call stack — creating a brand-new context at the
+  // exact moment the timer finishes (no gesture, it's a setInterval/visibility
+  // callback) is exactly what iOS silently blocks. The fix is to unlock ONE
+  // context early, during a real tap, and keep reusing that same instance —
+  // once unlocked it stays unlocked for the rest of the session.
+  let sharedAudioCtx = null;
+  function unlockAudioContext() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!sharedAudioCtx) sharedAudioCtx = new AudioCtx();
+      if (sharedAudioCtx.state === 'suspended') sharedAudioCtx.resume();
+    } catch (e) {
+      console.warn('Audio unlock unavailable', e);
+    }
+  }
+
   timerRingWrapBtn.addEventListener('click', () => {
     restTimerEl.classList.toggle('collapsed');
+    unlockAudioContext();
   });
 
   const RING_RADIUS = 52;
@@ -2123,8 +2149,12 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   function playBeep() {
     if (!timerSoundEnabled) return;
     try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
+      // Reuse (and re-unlock if needed) the shared context instead of
+      // creating a fresh one here — see unlockAudioContext() above for why
+      // that specifically breaks silently on iOS.
+      unlockAudioContext();
+      const ctx = sharedAudioCtx;
+      if (!ctx) return;
       // 0-100 slider maps to a peak gain of roughly 0.12-0.95 — noticeably
       // louder ceiling than a fixed beep, while staying just under clipping.
       const peakGain = 0.12 + (timerVolume / 100) * 0.83;
@@ -2146,7 +2176,6 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       // insistent, closer to an actual alarm rather than a gentle chime.
       const repeatCount = timerVolume >= 60 ? 5 : 3;
       for (let i = 0; i < repeatCount; i++) beepOnce(now + i * 0.4);
-      setTimeout(() => ctx.close(), repeatCount * 400 + 500);
     } catch (e) {
       console.warn('Audio alert unavailable', e);
     }
@@ -2198,6 +2227,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   }
 
   function startTimer() {
+    unlockAudioContext(); // real tap — the reliable place to unlock iOS audio
     stopAlerting();
     const remaining = getRemainingSeconds();
     if (remaining <= 0) {
