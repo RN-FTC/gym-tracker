@@ -1363,6 +1363,8 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   const foodAiEstimateBtn = document.getElementById('food-ai-estimate-btn');
   const foodPhotoBtn = document.getElementById('food-photo-btn');
   const foodPhotoInput = document.getElementById('food-photo-input');
+  const foodLibraryBtn = document.getElementById('food-library-btn');
+  const foodLibraryInput = document.getElementById('food-library-input');
   const foodAiNote = document.getElementById('food-ai-note');
   const foodCaloriesInput = document.getElementById('food-calories-input');
   const foodProteinInput = document.getElementById('food-protein-input');
@@ -1491,6 +1493,7 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
   if (AI_ENABLED) {
     foodAiEstimateBtn.disabled = false;
     foodPhotoBtn.disabled = false;
+    foodLibraryBtn.disabled = false;
     foodAiNote.classList.add('hidden');
   }
 
@@ -1548,8 +1551,12 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     foodPhotoInput.click();
   });
 
-  foodPhotoInput.addEventListener('change', async () => {
-    const file = foodPhotoInput.files && foodPhotoInput.files[0];
+  foodLibraryBtn.addEventListener('click', () => {
+    if (!AI_ENABLED) return;
+    foodLibraryInput.click();
+  });
+
+  async function handleFoodPhotoFile(file, triggerBtn, triggerInput) {
     if (!file) return;
     // Whatever the user typed here before picking a photo is a clarifying
     // note (e.g. "french toast with berries, not chocolate cake") — send it
@@ -1557,9 +1564,10 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
     // clobber it afterward (fillFoodFieldsFromEstimate already only fills
     // the description when it's empty).
     const userNote = foodDescriptionInput.value.trim();
-    const originalLabel = foodPhotoBtn.textContent;
+    const originalLabel = triggerBtn.textContent;
     foodPhotoBtn.disabled = true;
-    foodPhotoBtn.textContent = 'Scanning…';
+    foodLibraryBtn.disabled = true;
+    triggerBtn.textContent = 'Scanning…';
     foodAiNote.classList.remove('hidden');
     foodAiNote.textContent = 'Scanning photo…';
     try {
@@ -1579,9 +1587,20 @@ import { AI_ESTIMATE_ENDPOINT } from './ai-config.js';
       foodAiNote.textContent = 'Could not scan that photo: ' + err.message;
     } finally {
       foodPhotoBtn.disabled = false;
-      foodPhotoBtn.textContent = originalLabel;
-      foodPhotoInput.value = '';
+      foodLibraryBtn.disabled = false;
+      triggerBtn.textContent = originalLabel;
+      triggerInput.value = '';
     }
+  }
+
+  foodPhotoInput.addEventListener('change', () => {
+    const file = foodPhotoInput.files && foodPhotoInput.files[0];
+    handleFoodPhotoFile(file, foodPhotoBtn, foodPhotoInput);
+  });
+
+  foodLibraryInput.addEventListener('change', () => {
+    const file = foodLibraryInput.files && foodLibraryInput.files[0];
+    handleFoodPhotoFile(file, foodLibraryBtn, foodLibraryInput);
   });
 
   /* ---------------------------------------------------------------------

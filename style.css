@@ -835,8 +835,8 @@ select { appearance: none; cursor: pointer; }
   font-size: 0.75rem;
 }
 
-.food-ai-row { margin-top: 14px; }
-.food-ai-row .btn { flex: 1; }
+.food-ai-row { margin-top: 14px; flex-wrap: wrap; }
+.food-ai-row .btn { flex: 1; min-width: 140px; }
 
 .food-ai-note {
   margin-top: 8px;
